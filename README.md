@@ -1,24 +1,26 @@
-+=============================================================================+
-|                                                                             |
-|                                                                             |
-|                                                                             |
-|                                                                             |
-|   `7MM            `7MM"""Yp,       db            db      `7MMM.     ,MMF'   |
-|     MM              MM    Yb      ;MM:          ;MM:       MMMb    dPMM     |
-|     MM  ,MP'        MM    dP     ,V^MM.        ,V^MM.      M YM   ,M MM     |
-|     MM ;Y           MM"""bg.    ,M  `MM       ,M  `MM      M  Mb  M' MM     |
-|     MM;Mm   mmmmm   MM    `Y    AbmmmqMA      AbmmmqMA     M  YM.P'  MM     |
-|     MM `Mb.         MM    ,9   A'     VML    A'     VML    M  `YM'   MM     |
-|   .JMML. YA.      .JMMmmmd9  .AMA.   .AMMA..AMA.   .AMMA..JML. `'  .JMML.   |
-|                                                                             |
-|                                                                             |
-|                                                                             |
-|                                                                             |
-+=============================================================================+
 
-			   kinetic-Batch Adsorber Analogue Model     
-				   Copyright (C) 2025 Hassan Azzan
-				 Imperial College London, United Kingdom
+
+    +=============================================================================+
+    |                                                                             |
+    |                                                                             |
+    |                                                                             |
+    |                                                                             |
+    |   `7MM            `7MM"""Yp,       db            db      `7MMM.     ,MMF'   |
+    |     MM              MM    Yb      ;MM:          ;MM:       MMMb    dPMM     |
+    |     MM  ,MP'        MM    dP     ,V^MM.        ,V^MM.      M YM   ,M MM     |
+    |     MM ;Y           MM"""bg.    ,M  `MM       ,M  `MM      M  Mb  M' MM     |
+    |     MM;Mm   mmmmm   MM    `Y    AbmmmqMA      AbmmmqMA     M  YM.P'  MM     |
+    |     MM `Mb.         MM    ,9   A'     VML    A'     VML    M  `YM'   MM     |
+    |   .JMML. YA.      .JMMmmmd9  .AMA.   .AMMA..AMA.   .AMMA..JML. `'  .JMML.   |
+    |                                                                             |
+    |                                                                             |
+    |                                                                             |
+    |                                                                             |
+    +=============================================================================+
+
+						   kinetic-Batch Adsorber Analogue Model     
+							   Copyright (C) 2025 Hassan Azzan
+							 Imperial College London, United Kingdom
 
 Imperial College London, United Kingdom
 Multiphase Systems Laboratory
