@@ -17,15 +17,15 @@
     |                                                                             |
     |                                                                             |
     +=============================================================================+
-
-						   kinetic-Batch Adsorber Analogue Model     
-							   Copyright (C) 2025 Hassan Azzan
-							 Imperial College London, United Kingdom
-
-Imperial College London, United Kingdom
-Multiphase Systems Laboratory
-Year:     2025
-Authors:  Hassan Azzan (HA), Ayca Yilmaz (AY)
+				
+						 kinetic-Batch Adsorber Analogue Model     
+						    Copyright (C) 2025 Hassan Azzan
+						 
+						Imperial College London, United Kingdom
+						     Multiphase Systems Laboratory
+						
+					 Authors:  Hassan Azzan (HA), Ayca Yilmaz (AY)
+		
 
 ## INTRODUCTION
 The repository contains the matlab scripts and functions of a model for simulating a zero-dimensional time variant kinetics based cyclic adsorption process.
@@ -43,7 +43,7 @@ The following dependencies are required for the proper execution of this program
 
 1. Clone the full software package from the GitHub server into the preferred installation directory (e.g. Desktop, My Documents). The command is as follows:
 ```sh
-git clone ttps://github.com/ha3215/kinetic-BAAM.git
+git clone https://github.com/ha3215/kinetic-BAAM.git
 ```
 
 ## REFERENCES
@@ -55,7 +55,6 @@ git clone ttps://github.com/ha3215/kinetic-BAAM.git
 
 ### Project contributors
 * Ms. Ayca Yilmaz
-* Prof. Camille Petit (camille.petit@imperial.ac.uk)
 * Prof. Ronny Pini (r.pini@imperial.ac.uk)
 
 ## LICENSE
