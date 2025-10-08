@@ -57,6 +57,29 @@ git clone https://github.com/ha3215/kinetic-BAAM.git
 * Ms. Ayca Yilmaz
 * Prof. Ronny Pini (r.pini@imperial.ac.uk)
 
+
+## Change Log
+All notable changes to this project will be documented in this file.
+ 
+###  Initial creation of the repository - 2025-10-07
+#### Added
+- kBAAM_ODEs_nonIsothermal_ND.m
+- kBAAM_Outputs_nonIsothermal.m
+- LDFCoefficient.m
+- DSL.m
+- run_NSGA.m
+- kBAAM_run_NSGA.m
+- plotFunctions/
+- rawData/
+- matFiles/
+
+#### Changed
+- N/A
+ 
+#### Fixed
+- N/A
+ 
+
 ## LICENSE
 Copyright (C) 2025 Hassan Azzan
 
