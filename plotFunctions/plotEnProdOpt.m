@@ -32,8 +32,8 @@ markerVals = ["square", "square","o","o"];
 
 matNames = ["Zeolite 13X", "Activated Carbon"];
 
-fileNames =    {'Z13X_PVSA_Const_isothermal_0510251103',...
-    'Z13X_PVSA_Const_nonisothermal_0510251049'};
+fileNames =    {'Z13X_PVSA_Const_nonisothermal_0810251603',...
+    'Z13X_VSA_Const_nonisothermal_0810251609'};
 
 figure
 tiledlayout(1,1,"Padding","tight","TileSpacing","compact")
@@ -101,4 +101,4 @@ catch
 end
 
 scatter(AdamData(:,1),AdamData(:,2),50,'o',Marker='diamond',MarkerEdgeColor='k',MarkerFaceColor='g',MarkerFaceAlpha=1);
-legend('Isothermal', 'Nonisothermal','Adam (TSEMO)')
+legend('PVSA', 'VSA','Adam (TSEMO)')

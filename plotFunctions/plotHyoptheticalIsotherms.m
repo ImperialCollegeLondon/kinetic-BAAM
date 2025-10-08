@@ -29,11 +29,12 @@ maxTarget = "Productivity"; % Purity, Recovery, Productivity, both (Pu and Rec)a
 Pvals = linspace(0,1e5,1000);
 T = 298;
 
-fileNames =    {'Hypo_AdsorbentPVSA_Unc_nonisothermal_0310251213'};
+fileNames =    {'Hypo_AdsorbentVSA_Unc_nonisothermal_0810251446'};
 
 for kk = 1:length(fileNames)
     fileName = fileNames{kk};
-    data = readmatrix([fileName, '.txt']);
+    data = load([fileName, '.txt']);
+    % data = reshape(data,[length(data)./18,18]);
     load([fileName, '.mat']);
     figure
     try
@@ -95,14 +96,15 @@ for kk = 1:length(fileNames)
 
             if Obj(jj) > ObjTemp
                 ObjTemp = Obj(jj);
-                thetaVals = data(jj,:);
+                thetaVals2 = data(jj,:);
+                jj
             end
 
         end
     end
 
 
-    theta = thetaVals(end-6:end); % vector of decision variables, [F_in, P_I, t_ads, t_blo, t_evac]
+    theta = thetaVals2(end-6:end); % vector of decision variables, [F_in, P_I, t_ads, t_blo, t_evac]
 
     parameters.qsb_1 = theta(4);
     parameters.qsb_2 = theta(4);

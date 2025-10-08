@@ -69,7 +69,6 @@ parameters.epsilon_p = 0.35;
 parameters.Dm = 1.6e-5;
 parameters.tau = 3; 
 
-
 %% Cycle Properties
 % Flow velocity for adsorption step, v_in [m/s] 
 % Inlet molar composition, y1_in [-] 
@@ -81,6 +80,7 @@ parameters.tau = 3;
 % Heating in evacuation step (1 or 0) if temperature swing, heating [-]
 % Type of pressurisation ("LPP" or "FP"), pressType [-]
 % Type of cycle ("VSA" or "PSA"), processType [-]
+% rate constant for vacuum pump, lambda [1/s]
 parameters.v_in = 0.5;
 parameters.y1_in = 0.15;
 parameters.T_feed = 298;
@@ -94,6 +94,7 @@ parameters.t_press = 20;
 parameters.heating = 0;
 parameters.pressType = "FP";
 parameters.processType = "PVSA";
+parameters.lambda = 0.5; 
 
 %% Model Properties
 % Type of model ("isothermal" or "nonisothermal"), modelType [-]

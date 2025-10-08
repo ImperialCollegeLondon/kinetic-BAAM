@@ -25,8 +25,8 @@
 clc; clear all;
 close all;
 addpath(genpath(pwd))
-maxTarget = "Productivity"; % Purity, Recovery, Productivity, both (Pu and Rec)
-fileNames =    {'Z13X_PVSA_Const_nonisothermal_0810251154'};
+maxTarget = "both"; % Purity, Recovery, Productivity, both (Pu and Rec)
+fileNames =    {'Z13X_PVSA_Const_nonisothermal_0810251603'};
 
 for jj = 1:length(fileNames)
 
@@ -43,8 +43,12 @@ for jj = 1:length(fileNames)
             Obj = data(:,9);
         elseif maxTarget == "Productivity"
             Obj = data(:,10);
+        elseif maxTarget == "Energy"
+            Obj = -data(:,11);
         elseif maxTarget == "both"
             Obj = sqrt(data(:,8).^2+data(:,9).^2);
+        elseif maxTarget == "bothcon"
+            Obj = sqrt((data(:,10)./max(data(:,10))).^2+((1./data(:,11)./max(1./data(:,11)))).^2);
         else
         end
     catch
@@ -53,10 +57,11 @@ for jj = 1:length(fileNames)
 
     thetaVals = data(find(Obj==max(Obj)),:);
     thetaVals = thetaVals(1,:);
-    theta = [thetaVals(end) thetaVals(2) thetaVals(5) thetaVals(6) thetaVals(7) thetaVals(1)]; % vector of decision variables, [F_in, P_I, t_ads, t_blo, t_evac]
+    theta = [thetaVals(end) thetaVals(2) thetaVals(5) thetaVals(6) thetaVals(7) thetaVals(1)]; % vector of decision variables, [F_in, P_I, t_ads, t_blo, t_evac, p_H]
     parameters.outputType = "plot";
+    parameters.OptType = "Unc";
 
     %% Run to CSS and output KPIs corresponding to theta
-    KPIs = kBAAM_Outputs_nonIsothermal(parameters,theta); % KPIS = [-Recovery, -Purity];
+    KPIs = kBAAM_Outputs_nonIsothermal(parameters,theta) % KPIS = [-Recovery, -Purity];
 
 end
