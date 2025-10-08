@@ -21,13 +21,19 @@
 % Output arguments:
 %   - KPIS: heavy product recovery and purity
 %
+% Dependencies:
+%   - kBAAM_ODEs_nonIsothermal_ND.m
+%   - DSL.m
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [KPIs] = kBAAM_Outputs_nonIsothermal(parameters,varargin)
 
 %% Time durations of adsorption, blowdown, evacuation and pressurization steps
-outputType = size(varargin{1});
-% try
-theta = varargin{1};
+if nargin == 2
+    outputType = size(varargin{1});
+    theta = varargin{1};
+end
+
 try
     if parameters.outputType == "opt"
         theta = parameters.xRef.*theta;
@@ -35,77 +41,78 @@ try
 catch
 end
 
-if parameters.processType == "VSA"
-    parameters.v_in = theta(1);
-    parameters.p_I = theta(2);
-    parameters.t_ads = theta(3);
-    parameters.t_blo = theta(4);
-    parameters.t_evac = theta(5);
-    if parameters.outputType == "opt"
-        parameters.p_I =  10.^parameters.p_I;
-    end
-elseif parameters.processType == "PVSA"
-    parameters.v_in = theta(1);
-    parameters.p_I = theta(2);
-    parameters.t_ads = theta(3);
-    parameters.t_blo = theta(4);
-    parameters.t_evac = theta(5);
-    % parameters.V_column = theta(6);
-    parameters.p_H = theta(6);
-    if parameters.outputType == "opt"
-        parameters.p_I =  10.^parameters.p_I;
-        parameters.p_H =  10.^parameters.p_H;
-        % parameters.v_in = parameters.v_in.*parameters.p_H./1e5;
-    end
-elseif parameters.processType == "AdsorbentVSA"
-    parameters.v_in = 0.4;
-    parameters.p_I = theta(1);
-    parameters.t_ads = theta(2);
-    parameters.t_blo = theta(3);
-    parameters.t_evac = 800;
-    parameters.qsb_1 = theta(4);
-    parameters.qsb_2 = theta(4);
-    parameters.qsd_1 = 0;
-    parameters.qsd_2 = 0;
-    parameters.bo_1 = theta(5);
-    parameters.bo_2 = theta(5);
-    parameters.do_1 = 0;
-    parameters.do_2 = 0;
-    parameters.delUb_1 = -theta(6);
-    parameters.delUb_2 = -theta(7);
-    parameters.delUd_1 = 0;
-    parameters.delUd_2 = 0;
-    if parameters.outputType == "opt"
-        parameters.p_I = 10.^parameters.p_I;
-    end
-elseif parameters.processType == "AdsorbentPVSA"
-    parameters.v_in = 0.4;
-    parameters.p_I = theta(1);
-    parameters.t_ads = theta(2);
-    parameters.t_blo = theta(3);
-    parameters.t_evac = 2000;
-    parameters.qsb_1 = theta(4);
-    parameters.qsb_2 = theta(4);
-    parameters.qsd_1 = 0;
-    parameters.qsd_2 = 0;
-    parameters.bo_1 = theta(5);
-    parameters.bo_2 = theta(5);
-    parameters.do_1 = 0;
-    parameters.do_2 = 0;
-    parameters.delUb_1 = -theta(6);
-    parameters.delUb_2 = -theta(7);
-    parameters.delUd_1 = 0;
-    parameters.delUd_2 = 0;
-    parameters.p_H = theta(8);
-    if parameters.outputType == "opt"
-        parameters.p_I = 10.^parameters.p_I;
-        parameters.p_H = 10.^parameters.p_H;
-        % parameters.F_in = parameters.F_in.*parameters.p_H./1e5;
+if nargin == 2
+    if parameters.processType == "VSA"
+        parameters.v_in = theta(1);
+        parameters.p_I = theta(2);
+        parameters.t_ads = theta(3);
+        parameters.t_blo = theta(4);
+        parameters.t_evac = theta(5);
+        if parameters.outputType == "opt"
+            parameters.p_I =  10.^parameters.p_I;
+        end
+    elseif parameters.processType == "PVSA"
+        parameters.v_in = theta(1);
+        parameters.p_I = theta(2);
+        parameters.t_ads = theta(3);
+        parameters.t_blo = theta(4);
+        parameters.t_evac = theta(5);
+        % parameters.V_column = theta(6);
+        parameters.p_H = theta(6);
+        if parameters.outputType == "opt"
+            parameters.p_I =  10.^parameters.p_I;
+            parameters.p_H =  10.^parameters.p_H;
+            % parameters.v_in = parameters.v_in.*parameters.p_H./1e5;
+        end
+    elseif parameters.processType == "AdsorbentVSA"
+        parameters.v_in = 0.4;
+        parameters.p_I = theta(1);
+        parameters.t_ads = theta(2);
+        parameters.t_blo = theta(3);
+        parameters.t_evac = 800;
+        parameters.qsb_1 = theta(4);
+        parameters.qsb_2 = theta(4);
+        parameters.qsd_1 = 0;
+        parameters.qsd_2 = 0;
+        parameters.bo_1 = theta(5);
+        parameters.bo_2 = theta(5);
+        parameters.do_1 = 0;
+        parameters.do_2 = 0;
+        parameters.delUb_1 = -theta(6);
+        parameters.delUb_2 = -theta(7);
+        parameters.delUd_1 = 0;
+        parameters.delUd_2 = 0;
+        if parameters.outputType == "opt"
+            parameters.p_I = 10.^parameters.p_I;
+        end
+    elseif parameters.processType == "AdsorbentPVSA"
+        parameters.v_in = 0.4;
+        parameters.p_I = theta(1);
+        parameters.t_ads = theta(2);
+        parameters.t_blo = theta(3);
+        parameters.t_evac = 2000;
+        parameters.qsb_1 = theta(4);
+        parameters.qsb_2 = theta(4);
+        parameters.qsd_1 = 0;
+        parameters.qsd_2 = 0;
+        parameters.bo_1 = theta(5);
+        parameters.bo_2 = theta(5);
+        parameters.do_1 = 0;
+        parameters.do_2 = 0;
+        parameters.delUb_1 = -theta(6);
+        parameters.delUb_2 = -theta(7);
+        parameters.delUd_1 = 0;
+        parameters.delUd_2 = 0;
+        parameters.p_H = theta(8);
+        if parameters.outputType == "opt"
+            parameters.p_I = 10.^parameters.p_I;
+            parameters.p_H = 10.^parameters.p_H;
+            % parameters.F_in = parameters.F_in.*parameters.p_H./1e5;
+        end
     end
 end
 
-
-Rg = 8.314;
+Rg = 8.3145;
 
 dt = 0.1; % [s]
 t_ads   = 0:dt:parameters.t_ads;
@@ -162,156 +169,149 @@ timeRef = parameters.p_H./(Rg.*parameters.T_feed.*volFluxRef); % P0 / cdotin * R
 cycle = 1;
 warning('off','all')
 try
-while  cycle < max_no_Cycles && mean(temp_check) < 1
-    options = odeset('RelTol', 1e-5, 'AbsTol', 1e-5, 'MaxOrder', 2); % sets the levels of relative tolerance, absolute tolerance and maximum order of the ode15 for our system
+    while  cycle < max_no_Cycles && mean(temp_check) < 1
+        options = odeset('RelTol', 1e-5, 'AbsTol', 1e-5, 'MaxOrder', 2); % sets the levels of relative tolerance, absolute tolerance and maximum order of the ode15 for our system
 
-    cycle = cycle+1;
+        cycle = cycle+1;
 
-    [t1, X1] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'ads'), t_ads./(timeRef), X0, options); %t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
-    t1 = t1.*timeRef;
-    X1(X1<0) = 0;
-    X1(X1(:,1)>1,1) = 1;
-    X0 = X1(end,:)';
-    X1 = X1.*parameters.refVals;
+        [t1, X1] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'ads'), t_ads./(timeRef), X0, options); %t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
+        t1 = t1.*timeRef;
+        X1(X1<0) = 0;
+        X1(X1(:,1)>1,1) = 1;
+        X0 = X1(end,:)';
+        X1 = X1.*parameters.refVals;
 
-    Fout_ads = parameters.F_in - (1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (gradient(X1(:,2),dt.*timeRef) + gradient(X1(:,3),dt.*timeRef));
-    Fout_ads(Fout_ads<0) = 0;
-    FCO2_out_ads = Fout_ads.*X1(:,1); 
+        Fout_ads = parameters.F_in - (1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (gradient(X1(:,2),dt.*timeRef) + gradient(X1(:,3),dt.*timeRef));
+        Fout_ads(Fout_ads<0) = 0;
+        FCO2_out_ads = Fout_ads.*X1(:,1);
 
-    molCO2_out_ads = trapz(t1.*timeRef,FCO2_out_ads); moltot_out_ads = trapz(t1.*timeRef,Fout_ads);
-    parameters.y1_LPP = molCO2_out_ads./moltot_out_ads;
+        molCO2_out_ads = trapz(t1.*timeRef,FCO2_out_ads); moltot_out_ads = trapz(t1.*timeRef,Fout_ads);
+        parameters.y1_LPP = molCO2_out_ads./moltot_out_ads;
 
-    [t2, X2] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'blo'), t_blo./(timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
-    t2 = t2.*timeRef;
-    X2(X2<0) = 0;
-    X2(X2(:,1)>1,1) = 1;
-    X0 = X2(end,:)';
-    X2 = X2.*parameters.refVals;
+        [t2, X2] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'blo'), t_blo./(timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
+        t2 = t2.*timeRef;
+        X2(X2<0) = 0;
+        X2(X2(:,1)>1,1) = 1;
+        X0 = X2(end,:)';
+        X2 = X2.*parameters.refVals;
 
-    [t3, X3] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'evac'), t_evac./(timeRef), X0, options) ;%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
-    t3 = t3.*timeRef;
-    X3(X3<0) = 0;
-    X3(X3(:,1)>1,1) = 1;
-    X0 = X3(end,:)'; %This sets up the initial condition for the next step, by taking the final state from the previous step.%end means the last row of X1, containing all the state variables at %the t final , : takes all the columns (for all types of the state%variables
-    X3 = X3.*parameters.refVals;
+        [t3, X3] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'evac'), t_evac./(timeRef), X0, options) ;%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
+        t3 = t3.*timeRef;
+        X3(X3<0) = 0;
+        X3(X3(:,1)>1,1) = 1;
+        X0 = X3(end,:)'; %This sets up the initial condition for the next step, by taking the final state from the previous step.%end means the last row of X1, containing all the state variables at %the t final , : takes all the columns (for all types of the state%variables
+        X3 = X3.*parameters.refVals;
 
-    if t3(end) < 0.95*parameters.t_evac
-        parameters.t_evac = t3(end); % Update evacuation time to length of simulation instead of discarding. Integration seems to fail when flowrate in close to 0 and mole fraction close to 1.
-        t_evac  = 0:dt:parameters.t_evac;
-        parameters.P_initR = parameters.P_evac(parameters.t_evac);
-        cycle = 1
-    end
+        if t3(end) < 0.95*parameters.t_evac
+            parameters.t_evac = t3(end); % Update evacuation time to length of simulation instead of discarding. Integration seems to fail when flowrate in close to 0 and mole fraction close to 1.
+            t_evac  = 0:dt:parameters.t_evac;
+            parameters.P_initR = parameters.P_evac(parameters.t_evac);
+            cycle = 1
+        end
 
-    [t4, X4] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'pres'), t_press./(timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
-    t4 = t4.*timeRef;
-    X4(X4<0) = 0;
-    X4(X4(:,1)>1,1) = 1;
-    X0 = X4(end,:)'; %This sets up the initial condition for the next step, by taking the final state from the previous step.
-    X4 = X4.*parameters.refVals;
+        [t4, X4] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'pres'), t_press./(timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
+        t4 = t4.*timeRef;
+        X4(X4<0) = 0;
+        X4(X4(:,1)>1,1) = 1;
+        X0 = X4(end,:)'; %This sets up the initial condition for the next step, by taking the final state from the previous step.
+        X4 = X4.*parameters.refVals;
 
-    nCO2_bd = (X2(end,1)* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (parameters.R * X2(end,4))) + X2(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-    nCO2_evac = (X3(end,1)* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (parameters.R * X3(end,4))) + X3(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-    nN2_bd = ((1-X2(end,1))* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (parameters.R * X2(end,4))) + X2(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-    nN2_evac = ((1-X3(end,1))* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (parameters.R * X3(end,4))) + X3(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-    nCO2_pres = (X4(end,1)* parameters.P_press(t4(end)) * parameters.V_column * parameters.e_bed / (parameters.R * X4(end,4))) + X4(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-    nCO2_adsin = parameters.F_in * parameters.y1_in * parameters.t_ads;
+        nCO2_bd = (X2(end,1)* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        nCO2_evac = (X3(end,1)* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        nN2_bd = ((1-X2(end,1))* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        nN2_evac = ((1-X3(end,1))* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        nCO2_pres = (X4(end,1)* parameters.P_press(t4(end)) * parameters.V_column * parameters.e_bed / (Rg * X4(end,4))) + X4(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        nCO2_adsin = parameters.F_in * parameters.y1_in * parameters.t_ads;
 
-    if parameters.pressType == "LPP"
-        recovery_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_adsin);
-    else
-        recovery_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_pres - nCO2_evac + nCO2_adsin);
-    end
-    purity_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_bd - nCO2_evac + nN2_bd - nN2_evac);
+        if parameters.pressType == "LPP"
+            recovery_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_adsin);
+        else
+            recovery_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_pres - nCO2_evac + nCO2_adsin);
+        end
+        purity_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_bd - nCO2_evac + nN2_bd - nN2_evac);
 
-    cycle_time = (parameters.t_ads + parameters.t_blo + parameters.t_evac + parameters.t_press);
+        cycle_time = (parameters.t_ads + parameters.t_blo + parameters.t_evac + parameters.t_press);
 
-    productivity = (nCO2_bd - nCO2_evac) /(parameters.V_column.*cycle_time);
+        productivity = (nCO2_bd - nCO2_evac) /(parameters.V_column.*cycle_time);
 
-    %%  Energy Calculation
-    Fout_bd = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt))-(parameters.e_bed ./ (Rg.*X2(:,4))) .* parameters.dPdt_blo(t2) .* parameters.V_column ;
-    Fout_bd(Fout_bd<0) = 0;
-    vout_bd = Fout_bd.*Rg.*X2(:,4)./(parameters.P_blo(t2))./A_in;
-    Fout_evac = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X3(:,2),dt) + gradient(X3(:,3),dt))-(parameters.e_bed ./ (Rg.*X3(:,4))) .* parameters.dPdt_evac(t3) .* parameters.V_column ;
-    vout_evac = Fout_evac.*Rg.*X3(:,4)./(parameters.P_evac(t3))./A_in;
-    Fin_pres = (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .*  (gradient(X4(:,2),dt) + gradient(X4(:,3),dt))  + (parameters.e_bed ./ (Rg.*X4(:,4))) .* parameters.dPdt_press(t4) .* parameters.V_column;  %calculates the inlet flow rate of the pressurization step
-    vin_pres = Fin_pres.*Rg.*X4(:,4)./(parameters.P_press(t4))./A_in;
-    % Fin_ads = parameters.F_in;  %calculates the inlet flow rate of the pressurization step
+        %%  Energy Calculation
+        Fout_bd = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt))-(parameters.e_bed ./ (Rg.*X2(:,4))) .* parameters.dPdt_blo(t2) .* parameters.V_column ;
+        Fout_bd(Fout_bd<0) = 0;
+        vout_bd = Fout_bd.*Rg.*X2(:,4)./(parameters.P_blo(t2))./A_in;
+        Fout_evac = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X3(:,2),dt) + gradient(X3(:,3),dt))-(parameters.e_bed ./ (Rg.*X3(:,4))) .* parameters.dPdt_evac(t3) .* parameters.V_column ;
+        vout_evac = Fout_evac.*Rg.*X3(:,4)./(parameters.P_evac(t3))./A_in;
+        Fin_pres = (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .*  (gradient(X4(:,2),dt) + gradient(X4(:,3),dt))  + (parameters.e_bed ./ (Rg.*X4(:,4))) .* parameters.dPdt_press(t4) .* parameters.V_column;  %calculates the inlet flow rate of the pressurization step
+        vin_pres = Fin_pres.*Rg.*X4(:,4)./(parameters.P_press(t4))./A_in;
+        % Fin_ads = parameters.F_in;  %calculates the inlet flow rate of the pressurization step
 
-    eta_bd = 0.8.*(19.55.*parameters.P_blo(t2).*1e-5./(1+19.55.*parameters.P_blo(t2).*1e-5));
-    eta_evac = 0.8.*(19.55.*parameters.P_evac(t3).*1e-5./(1+19.55.*parameters.P_evac(t3).*1e-5));
-    % eta_press = 0.8.*(19.55.*parameters.P_press(t4).*1e-5./(1+19.55.*parameters.P_press(t4).*1e-5));
-    % eta_ads = 0.8.*(19.55.*parameters.p_H.*1e-5./(1+19.55.*parameters.p_H.*1e-5));
-    eta_press = 0.8;
-    eta_ads = 0.8;
-
-
-    % EC_BD   = trapz(t2,1./eta_bd.*Fout_bd  .*Rg.*X2(:,4).*(1.4./0.4).*((1e5./min(1e5,parameters.P_blo(t2))).^(0.4./1.4)-1));
-    % EC_EVAC = trapz(t3,1./eta_evac.*Fout_evac.*Rg.*X3(:,4).*(1.4./0.4).*((1e5./min(1e5,parameters.P_evac(t3))).^(0.4./1.4)-1));
-    % EC_PRES = trapz(t4,1./eta_press.*Fin_pres .*Rg.*X4(:,4).*(1.4./0.4).*((max(1e5,parameters.P_press(t4))./1e5).^(0.4./1.4)-1));
-    % EC_ADS = (t1(end).*1./eta_ads.*Fin_ads .*Rg.*parameters.T_feed.*(1.4./0.4).*((max(1e5,parameters.p_H)./1e5).^(0.4./1.4)-1));
-    EC_BD   = trapz(t2,1./eta_bd.*vout_bd.*A_in.*1.*parameters.P_blo(t2).*(1.4./0.4).*((1e5./min(1e5,parameters.P_blo(t2))).^(0.4./1.4)-1));
-    EC_EVAC = trapz(t3,1./eta_evac.*vout_evac.*A_in.*1.*parameters.P_evac(t3).*(1.4./0.4).*((1e5./min(1e5,parameters.P_evac(t3))).^(0.4./1.4)-1));
-    EC_PRES = trapz(t4,1./eta_press.*vin_pres.*A_in.*1.*parameters.P_press(t4).*(1.4./0.4).*((max(1e5,parameters.P_press(t4))./1e5).^(0.4./1.4)-1));
-    EC_ADS = (t1(end).*1./eta_ads.*parameters.v_in.*A_in.*1.*parameters.p_H.*(1.4./0.4).*((max(1e5,parameters.p_H)./1e5).^(0.4./1.4)-1));
-
-    SEC = (EC_PRES + EC_ADS + EC_BD + EC_EVAC)./((nCO2_bd - nCO2_evac).*0.044);
+        eta_bd = 0.8.*(19.55.*parameters.P_blo(t2).*1e-5./(1+19.55.*parameters.P_blo(t2).*1e-5));
+        eta_evac = 0.8.*(19.55.*parameters.P_evac(t3).*1e-5./(1+19.55.*parameters.P_evac(t3).*1e-5));
+        % eta_press = 0.8.*(19.55.*parameters.P_press(t4).*1e-5./(1+19.55.*parameters.P_press(t4).*1e-5));
+        % eta_ads = 0.8.*(19.55.*parameters.p_H.*1e-5./(1+19.55.*parameters.p_H.*1e-5));
+        eta_press = 0.8;
+        eta_ads = 0.8;
 
 
-    recovery_percentageValues(cycle) = recovery_percentage;
-    purity_percentageValues(cycle) = purity_percentage;
-    productivity_Values(cycle) = productivity;
-    SEC_Values(cycle) = SEC;
+        % EC_BD   = trapz(t2,1./eta_bd.*Fout_bd  .*Rg.*X2(:,4).*(1.4./0.4).*((1e5./min(1e5,parameters.P_blo(t2))).^(0.4./1.4)-1));
+        % EC_EVAC = trapz(t3,1./eta_evac.*Fout_evac.*Rg.*X3(:,4).*(1.4./0.4).*((1e5./min(1e5,parameters.P_evac(t3))).^(0.4./1.4)-1));
+        % EC_PRES = trapz(t4,1./eta_press.*Fin_pres .*Rg.*X4(:,4).*(1.4./0.4).*((max(1e5,parameters.P_press(t4))./1e5).^(0.4./1.4)-1));
+        % EC_ADS = (t1(end).*1./eta_ads.*Fin_ads .*Rg.*parameters.T_feed.*(1.4./0.4).*((max(1e5,parameters.p_H)./1e5).^(0.4./1.4)-1));
+        EC_BD   = trapz(t2,1./eta_bd.*vout_bd.*A_in.*1.*parameters.P_blo(t2).*(1.4./0.4).*((1e5./min(1e5,parameters.P_blo(t2))).^(0.4./1.4)-1));
+        EC_EVAC = trapz(t3,1./eta_evac.*vout_evac.*A_in.*1.*parameters.P_evac(t3).*(1.4./0.4).*((1e5./min(1e5,parameters.P_evac(t3))).^(0.4./1.4)-1));
+        EC_PRES = trapz(t4,1./eta_press.*vin_pres.*A_in.*1.*parameters.P_press(t4).*(1.4./0.4).*((max(1e5,parameters.P_press(t4))./1e5).^(0.4./1.4)-1));
+        EC_ADS = (t1(end).*1./eta_ads.*parameters.v_in.*A_in.*1.*parameters.p_H.*(1.4./0.4).*((max(1e5,parameters.p_H)./1e5).^(0.4./1.4)-1));
 
-    process_indicators = [purity_percentageValues; recovery_percentageValues; productivity_Values; SEC_Values];
+        SEC = (EC_PRES + EC_ADS + EC_BD + EC_EVAC)./((nCO2_bd - nCO2_evac).*0.044);
 
-    if cycle > 5
-        for i = 1:4
-            for k = 0:4
-                if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.5
-                    temp_check(k+1) = 1;
-                else
-                    temp_check(k+1) = 0;
+
+        recovery_percentageValues(cycle) = recovery_percentage;
+        purity_percentageValues(cycle) = purity_percentage;
+        productivity_Values(cycle) = productivity;
+        SEC_Values(cycle) = SEC;
+
+        process_indicators = [purity_percentageValues; recovery_percentageValues; productivity_Values; SEC_Values];
+
+        if cycle > 5
+            for i = 1:4
+                for k = 0:4
+                    if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.5
+                        temp_check(k+1) = 1;
+                    else
+                        temp_check(k+1) = 0;
+                    end
                 end
             end
         end
+
     end
 
-end
 
+    % phi_pen = [0, 0];
+    % phi_pen(1) = (max(0,(0.95-purity_percentage./100))).^2 + (max(0,(0.90-recovery_percentage./100))).^2;
+    % phi_pen(2) = 1e3.*((max(0,(95-purity_percentage))).^2 + (max(0,(90-recovery_percentage))).^2);
+    % % try
+    %     if parameters.OptType == "Const"
+    %         KPIs = [(-1e3.*productivity+phi_pen(2)) (SEC.*2.77778e-7.*1e3+phi_pen(2))];
+    %     else
+    %         KPIs = [-recovery_percentage -purity_percentage];
+    %     end
 
-% phi_pen = [0, 0];
-% phi_pen(1) = (max(0,(0.95-purity_percentage./100))).^2 + (max(0,(0.90-recovery_percentage./100))).^2;
-% phi_pen(2) = 1e3.*((max(0,(95-purity_percentage))).^2 + (max(0,(90-recovery_percentage))).^2);
-% % try
-%     if parameters.OptType == "Const"
-%         KPIs = [(-1e3.*productivity+phi_pen(2)) (SEC.*2.77778e-7.*1e3+phi_pen(2))];
-%     else
-%         KPIs = [-recovery_percentage -purity_percentage];
-%     end
+    phi_pen = [0, 0];
+    phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(90-recovery_percentage))).^2;
+    phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(90-recovery_percentage))).^2);
+    if parameters.OptType == "Const"
+        KPIs = [(-productivity+phi_pen(1)) 10*(SEC.*2.77778e-7+phi_pen(2))];
+    else
+        KPIs = [-recovery_percentage -purity_percentage];
+    end
 
-phi_pen = [0, 0];
-phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(90-recovery_percentage))).^2;
-phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(90-recovery_percentage))).^2);
-if parameters.OptType == "Const"
-    KPIs = [(-productivity+phi_pen(1)) 10*(SEC.*2.77778e-7+phi_pen(2))];
-else
-    KPIs = [-recovery_percentage -purity_percentage];
-end
-
-
-% catch
-% end
-
-% if recovery_percentage > 100 || purity_percentage > 100
-%     KPIs = [1e5 1e5];
-% end
 catch
     KPIs = [1e5 1e5];
     SEC = 1e5;
 end
 %%
 
-if outputType(2) == 1 || parameters.outputType == "plot"
+if parameters.outputType == "plot"
 
     t_cycle = [t1; t2 + t1(end); t3 + t1(end) + t2(end); t4 + t1(end) + t2(end) + t3(end)]; %Shift the t2 time vector forward in time so it starts immediately after t1 ends
     X_cycle = [X1; X2; X3; X4];

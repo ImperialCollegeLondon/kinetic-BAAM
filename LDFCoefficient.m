@@ -26,18 +26,17 @@
 %   - k1: concentration dependent mass transfer coefficient for component 1 [1/s]
 %   - k2: concentration dependent mass transfer coefficient for component 2 [1/s]
 %
+% Dependencies:
+%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [k1, k2] = LDFCoefficient(P,y1,T,q1_star,q2_star,parameters)
 R = 8.314;
 
-epsilon_p = 0.35; % Particle voidage [-]
-Dm = 1.6e-5; % Molecular diffusivity [m2/s]
 rp = parameters.rp; % Particle radius [m]
-tau = 3; % Tortuosity [-]
-Dp = Dm/tau; % Effective pore diffusivity [m2/s]
+Dp = parameters.Dm/parameters.tau; % Effective pore diffusivity [m2/s]
 
-k01 = (15*epsilon_p*Dp/(rp^2)); % Adsorption rate constant for component 1 [/s]
-k02 = (15*epsilon_p*Dp/(rp^2)); % Adsorption rate constant for component 1 [/s]
+k01 = (15*parameters.epsilon_p*Dp/(rp^2)); % Adsorption rate constant for component 1 [/s]
+k02 = (15*parameters.epsilon_p*Dp/(rp^2)); % Adsorption rate constant for component 1 [/s]
 
 if y1 > 0 && y1 < 1
     ratio1 = ((P.*y1./(R.*T))./q1_star)./parameters.rho_s; % c1/q1_Star*rho_s (mol/m^3)

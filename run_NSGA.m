@@ -18,9 +18,13 @@
 %
 % Output arguments:
 %
+% Dependencies:
+%   - kBAAM_Outputs_nonIsothermal.m
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function run_NSGA(parameters)
-% Load PVSA model onto path
+
+% Load model onto path
 addpath(genpath(pwd))
 
 if parameters.processType == "PVSA"
@@ -56,21 +60,21 @@ end
 %% Solve optimisation problem using genetic algorithm
 % Genetic algorithm settings
 nVars = length(lb);
-ngens = 90;     % Number of generations
-pop_size = 300; % Number of members in population of each generation [-]
-% pop_size = 30; % Number of members in population of each generation [-]
+ngens = 90;     % Maximum number of generations
+pop_size = 200; % Number of members in population of each generation [-]
 
-rng default
+rng default 
 parameters.fileName = convertStringsToChars(strcat(parameters.adsorbentName,"_",parameters.processType,"_",parameters.OptType,"_",parameters.modelType,"_",datestr(now,'ddmmyyhhMM')));
 
-p = sobolset(pop_size,'Skip',1e2,'Leap',1e1);
-p = scramble(p,'MatousekAffineOwen');
-X0 = net(p,nVars+2); X0 = X0';
-X0 = X0(:,2:end-1);
+% p = sobolset(pop_size,'Skip',1e2,'Leap',1e1);
+% p = scramble(p,'MatousekAffineOwen');
+% X0 = net(p,nVars+2); X0 = X0';
+% X0 = X0(:,2:end-1);
 
-X0 = lhsdesign(pop_size,nVars);
-initPop = lb+X0.*ub;
-parameters.outputType = "opt";
+X0 = lhsdesign(pop_size,nVars); % Latin hypercube sampling to generate initial population matrix
+initPop = lb+X0.*ub; % Initial population matrix
+
+parameters.outputType = "opt"; % Output type needs to be "opt"
 options = optimoptions(@gamultiobj, 'Display', 'iter', 'Generations', ngens, 'PopulationSize', pop_size,'UseParallel',true,'InitialPopulationMatrix',initPop,'CrossoverFraction',0.85,'ParetoFraction',0.35,'PlotFcn','gaplotpareto','MigrationInterval',5); % ,'PlotFcn','gaplotpareto' GA options
 parameters.fileName = convertStringsToChars(strcat(parameters.adsorbentName,"_",parameters.processType,"_",parameters.OptType,"_",parameters.modelType,"_",datestr(now,'ddmmyyhhMM')));
 
