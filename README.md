@@ -43,7 +43,7 @@ The following dependencies are required for the proper execution of this program
 
 1. Clone the full software package from the GitHub server into the preferred installation directory (e.g. Desktop, My Documents). The command is as follows:
 ```sh
-git clone https://github.com/ha3215/kinetic-BAAM.git
+git clone https://github.com/ImperialCollegeLondon/kinetic-BAAM.git
 ```
 
 ## REFERENCES
