@@ -13,6 +13,7 @@
 % script is used to simulate both isothermal and non-isothermal models.
 %
 % Last modified:
+% - 2025-10-09, HA: Add wall energy balance
 % - 2025-09-21, HA: Initial creation
 %
 % Input arguments:
@@ -22,7 +23,7 @@
 %   - stepName: step being simulated
 %
 % Output arguments:
-%   - dXdt: vector of time derivatives (ODEs) of y1, q1, q2, T
+%   - dXdt: vector of time derivatives (ODEs) of y1, q1, q2, T, Tw
 %
 % Dependencies:
 %   - DSL.m
@@ -30,10 +31,11 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function dXdt = kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,stepName)
-y1 = X(1) ; % Molar fraction of component 1 (Co2) from the column vector X
-q1 = X(2) ; % Adsorbed phase concentration of component 1 (CO2) from the column vector X
-q2 = X(3) ; % Adsorbed phase concentration of component 2 (N2) from the column vector X
+y1 = X(1) ; % Molar fraction of component 1 from the column vector X
+q1 = X(2) ; % Adsorbed phase concentration of component 1 from the column vector X
+q2 = X(3) ; % Adsorbed phase concentration of component 2 from the column vector X
 T  = X(4) ; % Gas/Solid temperature from the column vector X
+Tw = X(5) ; % Column wall temperature from the column vector X
 
 R = 8.314; % Universal gas constant [J/molK]
 
@@ -44,6 +46,7 @@ volFluxRef = parameters.F_in./parameters.V_column; % reference molar flowrate pe
 timeRef = parameters.p_H./(R.*parameters.T_feed.*volFluxRef);  % reference time [s]
 qRef = parameters.qsb_1+parameters.qsd_1; % reference adsorbed amount [mol/kg]
 TRef = parameters.T_feed; % reference temperature [K]
+TwRef = parameters.T_feed; % reference temperature [K]
 PRef = parameters.p_H; % reference pressure [Pa]
 
 Qheat = 0; % heat input due to external heating [W/m3]
@@ -96,7 +99,7 @@ switch stepName
         dPdt = parameters.dPdt_evac(t.*timeRef)./(parameters.p_H./timeRef); % calculates pressure derivative in evacuation tep with respect to time
 
         if parameters.heating
-            Qheat = 60.*(parameters.r_in+0.003).*pi.*2.*L.*(T.*TRef-parameters.Theat); % external heat flux if heating is used
+            Qheat = 60.*(parameters.r_out).*pi.*2.*L.*(T.*TRef-parameters.Theat); % external heat flux if heating is used
         end
 
         parameters.F_in = 0;
@@ -125,7 +128,6 @@ end
 % Analytical computation of heat of adsorption as a function of P and T
 b1 = parameters.bo_1 .* exp(-parameters.delUb_1 ./ (R .* T.*TRef)); % Equilibrium constant for 1 on site b [m3/mol]
 d1 = parameters.do_1 .* exp(-parameters.delUd_1 ./ (R .* T.*TRef)); % Equilibrium constant for 1 on site d [m3/mol]
-
 b2 = parameters.bo_2 .* exp(-parameters.delUb_2 ./ (R .* T.*TRef)); % Equilibrium constant for 2 on site b [m3/mol]
 d2 = parameters.do_2 .* exp(-parameters.delUd_2 ./ (R .* T.*TRef)); % Equilibrium constant for 2 on site d [m3/mol]
 
@@ -133,26 +135,28 @@ c1 =     y1.*P.*PRef./(R.*T.*TRef); % Bulk concentration of 1 [mol/m3]
 c2 = (1-y1).*P.*PRef./(R.*T.*TRef); % Bulk concentration of 2 [mol/m3]
 
 delH1 = -(parameters.qsb_1.*b1.*parameters.delUb_1./(1+b1.*c1).^2 + parameters.qsd_1.*d1.*parameters.delUd_1./(1+d1.*c1).^2)./...
-    (parameters.qsb_1.*b1./((1+b1.*c1).^2)+parameters.qsd_1.*d1./((1+d1.*c1).^2)); % -RT * dlnp/d(1/T)
+    (parameters.qsb_1.*b1./((1+b1.*c1).^2)+parameters.qsd_1.*d1./((1+d1.*c1).^2)); % RT^2 * dlnp/dT (Clausius Clapeyron)
 
 delH2 = -(parameters.qsb_2.*b2.*parameters.delUb_2./((1+b2.*c2).^2) + parameters.qsd_2.*d2.*parameters.delUd_2./((1+d2.*c2).^2))./...
-    (parameters.qsb_2.*b2./((1+b2.*c2).^2)+parameters.qsd_2.*d2./((1+d2.*c2).^2)); % -RT * dlnp/d(1/T)
+    (parameters.qsb_2.*b2./((1+b2.*c2).^2)+parameters.qsd_2.*d2./((1+d2.*c2).^2)); % RT^2 * dlnp/dT (Clausius Clapeyron)
 
-delH1 = 31.19e3;
-delH2 = 16.38e3;
+% delH1 = 31.19e3;
+% delH2 = 16.38e3;
 
 % Calculates the derivative of temperature with respect to time (K/s) (dimensionless)
 if parameters.modelType == "isothermal"
     dTdt = 0; % set temperature derivative to 0 if isothermal
+    dTwdt = 0; % set wall temperature derivative to 0 if isothermal
 else
     coefft1 = timeRef./TRef./(((1 - parameters.e_bed)./ parameters.e_bed).*(parameters.rho_s.*parameters.cp_s + parameters.cp_a.*parameters.rho_s.*qRef.*(q1+q2))); % Reciprocal of the coefficient of the temperature derivative wrt to time
-    Qexternal = 2.*parameters.h_in./parameters.r_in./parameters.e_bed.*(T.*TRef-TRef)+Qheat; % heat transfer with the ambient
+    % Qexternal = ; % heat transfer with the ambient
     dTdt = coefft1.*(...
         + ((parameters.F_in)./parameters.V_column.*parameters.cp_g.*(TRef-TRef.*T)) ...
         - parameters.cp_g./R.*dPdt.*PRef./timeRef ...
         - (((1 - parameters.e_bed)./ parameters.e_bed).* parameters.cp_a.*parameters.rho_s.*T.*TRef.*qRef./timeRef.*(dq1dt + dq2dt)) + ...
         + (((1 - parameters.e_bed)./ parameters.e_bed).* parameters.rho_s.*qRef./timeRef.*(delH1.*dq1dt + delH2.*dq2dt))...
-        - Qexternal);
+        - (2.*parameters.h_in./parameters.r_in./parameters.e_bed.*(T.*TRef-Tw.*TRef)+Qheat));
+    dTwdt = (timeRef./TwRef)./(parameters.rho_w.*parameters.cp_w).*(2.*parameters.h_in.*parameters.r_in./(parameters.r_out.^2-parameters.r_in.^2).*(T.*TRef-Tw.*TRef) - 2.*parameters.h_out.*parameters.r_out./(parameters.r_out.^2-parameters.r_in.^2).*(Tw.*TRef-TRef));
 end
 
 % Calculates the derivative of mole fraction of CO2 with respect to time (1/s) (dimensionless)
@@ -164,7 +168,5 @@ dXdt(1) = dy1dt;
 dXdt(2) = dq1dt;
 dXdt(3) = dq2dt;
 dXdt(4) = dTdt;
+dXdt(5) = dTwdt;
 end
-
-
-

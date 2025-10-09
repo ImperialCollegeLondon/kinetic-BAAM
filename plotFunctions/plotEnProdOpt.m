@@ -1,3 +1,4 @@
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % Imperial College London, United Kingdom
@@ -32,13 +33,13 @@ markerVals = ["square", "square","o","o"];
 
 matNames = ["Zeolite 13X", "Activated Carbon"];
 
-fileNames =    {'Z13X_PVSA_Const_nonisothermal_0810251603',...
-    'Z13X_VSA_Const_nonisothermal_0810251609'};
+fileNames =    {'Z13X_PVSA_Const_nonisothermal_0910250741',...
+    'Z13X_VSA_Const_nonisothermal_0910250811'};
 
 figure
 tiledlayout(1,1,"Padding","tight","TileSpacing","compact")
-set(gcf,'units','inch','position',[5,5,6,4],'color','w')
-
+set(gcf,'units','inch','position',[5,5,7,5],'color','w')
+title('0-D vs 1-D non-isothermal dynamic models (13X - PCCC)')
 
 for mm = 1:length(fileNames)
     fileName = fileNames{mm};
@@ -56,17 +57,17 @@ for mm = 1:length(fileNames)
             conInd = [conInd;1];
         end
     end
-    hold on
-
-    scatter(ab(:,10),ab(:,11).*2.77778e-7.*1e3,1,'MarkerEdgeAlpha',0.05,'MarkerEdgeColor',colorVals(mm),'MarkerFaceColor','none','MarkerFaceAlpha',0.1,'HandleVisibility','off');
     [flag, ParetoPoints]=find_pareto_frontier(input);
-    hold on
     outPareto = [1./ParetoPoints(:,1),ParetoPoints(:,2)];
+
+    hold on
+    % scatter(ab(:,10),ab(:,11).*2.77778e-7.*1e3,1,'MarkerEdgeAlpha',0.05,'MarkerEdgeColor',colorVals(mm),'MarkerFaceColor','none','MarkerFaceAlpha',0.1,'HandleVisibility','off');
     scatter(outPareto(:,1),outPareto(:,2).*2.77778e-7.*1e3,50,markerVals(mm),'MarkerEdgeColor','none','LineWidth',0.8,'MarkerFaceColor',colorVals(mm),'MarkerFaceAlpha',1);
     box on; grid on;
     set(gca,'YScale','linear','XScale','linear','FontSize',12,'LineWidth',1.5,'GridLineWidth',1)
     ylabel('E_{T} [kWh/tonne]');
     xlabel('CO_{2} Productivity [mol/m3/s]')
+    ylim([0 1400])
 end
 
 try
@@ -101,4 +102,4 @@ catch
 end
 
 scatter(AdamData(:,1),AdamData(:,2),50,'o',Marker='diamond',MarkerEdgeColor='k',MarkerFaceColor='g',MarkerFaceAlpha=1);
-legend('PVSA', 'VSA','Adam (TSEMO)')
+legend('0D k-BAAM - PVSA', '0D k-BAAM - VSA','1D ADPF - PVSA (Adam)','Location','southeast')

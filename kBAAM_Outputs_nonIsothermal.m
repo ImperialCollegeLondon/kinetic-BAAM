@@ -11,6 +11,7 @@
 % and recovery of the heavy product
 %
 % Last modified:
+% - 2025-10-09, HA: Add wall energy balance
 % - 2025-10-08, HA: Add reverse engineering optimization method
 % - 2025-09-17, HA: Initial creation
 %
@@ -166,10 +167,15 @@ t_blo   = 0:dt:parameters.t_blo; % time vector for blowdown step [s]
 t_evac  = 0:dt:parameters.t_evac; % time vector for evacuation step [s]
 t_press = 0:dt:parameters.t_press; % time vector for pressurization step [s]
 
-parameters.refVals = [1,(parameters.qsb_1+parameters.qsd_1), (parameters.qsb_1+parameters.qsd_1), parameters.T_feed]; % vector of reference values of state variables for non-dimensionalization
+parameters.refVals = [1,(parameters.qsb_1+parameters.qsd_1), (parameters.qsb_1+parameters.qsd_1), parameters.T_feed, parameters.T_feed]; % vector of reference values of state variables for non-dimensionalization
 
-parameters.Lbyr = 6; % aspect ratio length by inner radius 
+parameters.Lbyr = 6; % aspect ratio length by inner radius
 parameters.r_in = (parameters.V_column./(parameters.Lbyr.*pi)).^(1./3); % inner radius of column [m]
+try
+    parameters.r_out = parameters.r_in + parameters.t_wall; % outer radius of column [m]
+catch
+    parameters.r_out = parameters.r_in + 0.003; % outer radius of column [m]
+end
 parameters.L = parameters.Lbyr.*parameters.r_in; % length of column [m]
 A_in = parameters.r_in.^2.*pi; % inner cross sectional area of column [m2]
 volFlowin = parameters.v_in.*A_in; % inlet volumetric flowrate [m3/s]
@@ -192,7 +198,7 @@ parameters.dPdt_press = @(t)-parameters.lambda*(parameters.p_L-parameters.p_H)*e
 %% Initial condition for matrix of solution states
 y1Init = 0.01; % initial mole fraction of component 1 in bed [-]
 [q1Init, q2Init] = DSL(parameters.p_H, y1Init, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-X0 = [y1Init; q1Init; q2Init; parameters.T_feed]./parameters.refVals'; % dimensionless vector of initial states
+X0 = [y1Init; q1Init; q2Init; parameters.T_feed; parameters.T_feed]./parameters.refVals'; % dimensionless vector of initial states
 
 %% Cyclic steady state simulation
 max_no_Cycles = 100; % Maximum number of cycles to run to test CSS
@@ -221,10 +227,10 @@ try
 
         Fout_ads = parameters.F_in - (1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (gradient(X1(:,2),dt.*timeRef) + gradient(X1(:,3),dt.*timeRef));
         Fout_ads(Fout_ads<0) = 0;
-        FCO2_out_ads = Fout_ads.*X1(:,1);
+        F_1_out_ads = Fout_ads.*X1(:,1);
 
-        molCO2_out_ads = trapz(t1.*timeRef,FCO2_out_ads); moltot_out_ads = trapz(t1.*timeRef,Fout_ads);
-        parameters.y1_LPP = molCO2_out_ads./moltot_out_ads;
+        mol_1_out_ads = trapz(t1.*timeRef,F_1_out_ads); moltot_out_ads = trapz(t1.*timeRef,Fout_ads);
+        parameters.y1_LPP = mol_1_out_ads./moltot_out_ads;
 
         [t2, X2] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND(t,X,parameters,'blo'), t_blo./(timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
         t2 = t2.*timeRef;
@@ -254,23 +260,23 @@ try
         X0 = X4(end,:)'; %This sets up the initial condition for the next step, by taking the final state from the previous step.
         X4 = X4.*parameters.refVals;
 
-        nCO2_bd = (X2(end,1)* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        nCO2_evac = (X3(end,1)* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        nN2_bd = ((1-X2(end,1))* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        nN2_evac = ((1-X3(end,1))* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        nCO2_pres = (X4(end,1)* parameters.P_press(t4(end)) * parameters.V_column * parameters.e_bed / (Rg * X4(end,4))) + X4(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        nCO2_adsin = parameters.F_in * parameters.y1_in * parameters.t_ads;
+        n_1_bd = (X2(end,1)* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        n_1_evac = (X3(end,1)* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        n_2_bd = ((1-X2(end,1))* parameters.P_blo(t2(end)) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        n_2_evac = ((1-X3(end,1))* parameters.P_evac(t3(end)) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        n_1_pres = (X4(end,1)* parameters.P_press(t4(end)) * parameters.V_column * parameters.e_bed / (Rg * X4(end,4))) + X4(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        n_1_adsin = parameters.F_in * parameters.y1_in * parameters.t_ads;
 
         if parameters.pressType == "LPP"
-            recovery_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_adsin);
+            recovery_percentage = 100 * (n_1_bd - n_1_evac) / (n_1_adsin);
         else
-            recovery_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_pres - nCO2_evac + nCO2_adsin);
+            recovery_percentage = 100 * (n_1_bd - n_1_evac) / (n_1_pres - n_1_evac + n_1_adsin);
         end
-        purity_percentage = 100 * (nCO2_bd - nCO2_evac) / (nCO2_bd - nCO2_evac + nN2_bd - nN2_evac);
+        purity_percentage = 100 * (n_1_bd - n_1_evac) / (n_1_bd - n_1_evac + n_2_bd - n_2_evac);
 
         cycle_time = (parameters.t_ads + parameters.t_blo + parameters.t_evac + parameters.t_press);
 
-        productivity = (nCO2_bd - nCO2_evac) /(parameters.V_column.*cycle_time);
+        productivity = (n_1_bd - n_1_evac) /(parameters.V_column.*cycle_time);
 
         %%  Energy Calculation
         Fout_bd = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt))-(parameters.e_bed ./ (Rg.*X2(:,4))) .* parameters.dPdt_blo(t2) .* parameters.V_column ;
@@ -299,7 +305,7 @@ try
         EC_PRES = trapz(t4,1./eta_press.*vin_pres.*A_in.*1.*parameters.P_press(t4).*(1.4./0.4).*((max(1e5,parameters.P_press(t4))./1e5).^(0.4./1.4)-1));
         EC_ADS = (t1(end).*1./eta_ads.*parameters.v_in.*A_in.*1.*parameters.p_H.*(1.4./0.4).*((max(1e5,parameters.p_H)./1e5).^(0.4./1.4)-1));
 
-        SEC = (EC_PRES + EC_ADS + EC_BD + EC_EVAC)./((nCO2_bd - nCO2_evac).*0.044);
+        SEC = (EC_PRES + EC_ADS + EC_BD + EC_EVAC)./((n_1_bd - n_1_evac).*0.044);
 
 
         recovery_percentageValues(cycle) = recovery_percentage;
@@ -366,7 +372,7 @@ if parameters.outputType == "plot"
     t_evac_end = t_blo_end + t3(end);
     P_cycle = [P1; P2; P3; P4];
     figure(1);
-    subplot(5,1,1)
+    subplot(6,1,1)
     hold on
     plot(t_cycle, P_cycle./1e5,'-', 'Color','#0B0','LineWidth', 2); ylabel('P [bar]'); xlabel('time [s]'); hold on;%check unit
     title('Column Pressure (Cyclic Steady State)')
@@ -377,7 +383,7 @@ if parameters.outputType == "plot"
     xlim([0 t_cycle(end)])
 
 
-    subplot(5,1,2)
+    subplot(6,1,2)
     hold on
     T = parameters.T_feed;
     [q1_starvals, q2_starvals] = DSL(P_cycle, X_cycle(:,1), X_cycle(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
@@ -385,7 +391,7 @@ if parameters.outputType == "plot"
     % [q1_starvalsAds, q2_starvalsAds] = DSL(parameters.P_ads(t_ads), X1(:,1), T, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
     q1_starvals(1:length(t_ads)) = q1_starvalsAds;
     q2_starvals(1:length(t_ads)) = q2_starvalsAds;
-    plot(t_cycle, q1_starvals, 'k--','LineWidth', 2,'DisplayName','q1*');
+    plot(t_cycle, q1_starvals,'k--','LineWidth', 2,'DisplayName','q1*');
     plot(t_cycle, X_cycle(:,2), 'b-','LineWidth', 2 , 'DisplayName','q1'); hold on;
     ylabel('q_{CO_{2}} [mol/kg]'); xlabel('time [s]')
     title('Adsorbed amount of CO_{2} (Cyclic Steady State)')
@@ -396,10 +402,10 @@ if parameters.outputType == "plot"
     box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
     xlim([0 t_cycle(end)])
 
-    subplot(5,1,3)
+    subplot(6,1,3)
     hold on
     plot(t_cycle, q2_starvals, 'k--','LineWidth', 2,'DisplayName','q2*');
-    plot(t_cycle, X_cycle(:,3), 'r','LineWidth', 2 , 'DisplayName','q2'); hold on;
+    plot(t_cycle, X_cycle(:,3), 'r--','LineWidth', 2 , 'DisplayName','q2'); hold on;
     ylabel('q_{N_{2}} [mol/kg]'); xlabel('time [s]')
     title('Adsorbed amount of N_{2} (Cyclic Steady State)')
     xline(t_ads_end,  'k--', 'LineWidth', 1, 'HandleVisibility','off');
@@ -409,7 +415,7 @@ if parameters.outputType == "plot"
     box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
     legend;
 
-    subplot(5,1,4)
+    subplot(6,1,4)
     hold on
     plot(t_cycle, X_cycle(:,4), 'm-','LineWidth', 2); ylabel('T [K]'); xlabel('time [s]'); hold on;
     title('Column Temperature (Cyclic Steady State)')
@@ -420,7 +426,18 @@ if parameters.outputType == "plot"
     set(gca, 'YScale', 'linear')
     xlim([0 t_cycle(end)])
 
-    subplot(5,1,5)
+    subplot(6,1,5)
+    hold on
+    plot(t_cycle, X_cycle(:,5), 'g-','LineWidth', 2); ylabel('T [K]'); xlabel('time [s]'); hold on;
+    title('Wall Temperature (Cyclic Steady State)')
+    xline(t_ads_end,  'k--', 'LineWidth', 1,'HandleVisibility','off');
+    xline(t_blo_end,  'k--', 'LineWidth', 1, 'HandleVisibility','off');
+    xline(t_evac_end, 'k--', 'LineWidth', 1, 'HandleVisibility','off');
+    box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
+    set(gca, 'YScale', 'linear')
+    xlim([0 t_cycle(end)])
+    
+    subplot(6,1,6)
     hold on
     plot(t_cycle, X_cycle(:,1), 'k-','LineWidth', 2); ylabel('y_{CO_{2}}'); xlabel('time [s]'); hold on;
     title('Mole fraction of CO_{2} (Cyclic Steady State)')

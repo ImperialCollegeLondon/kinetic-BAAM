@@ -11,6 +11,7 @@
 % used for design and optimization
 %
 % Last modified:
+% - 2025-10-09, HA: Add properties required for wall energy balance
 % - 2025-10-08, HA: Initial creation
 %
 % Input arguments:
@@ -24,7 +25,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function parameters = createParameters
 %% %%%  %%% Parameters structure  %%%  %%% 
-
 %% Adsorbent, Adsorbate and bed properties 
 % Name of the adsorbentt, adsorbentName [-]
 % saturation capacity for site b, qsb [mol/kg]
@@ -33,14 +33,18 @@ function parameters = createParameters
 % pre-exponent for site d, d0 [m3/mol]
 % internal energy change for adsorption for site b, delUb [J/mol]
 % internal energy change for adsorption for site d, delUd [J/mol]
-% Adsorbent particle density,rho_s [-] 
+% Gas specific heat capacity, cp_g [J/molK]
+% Adsorbed phase specific heat capacity, cp_a [J/molK]
+% Specific heat capacity of the column wall, cp_w [J/kgK]
+% Adsorbent specific heat capacity, cp_s [J/kgK]
+% Adsorbent particle density,rho_s [kg/m3] 
+% Column wall density,rho_s [kg/m3] 
 % Adsorbent particle radius, rp [m]
-% Adsorbent specific heat capacity, cp_s [J/kg]
 % Column volume, V_column [m3] 
+% Column wall thickness, t_wall [m] 
 % Bed voidage, e_bed [-] 
-% Gas specific heat capacity, cp_g [J/mol]
-% Adsorbed phase specific heat capacity, cp_a [J/mol]
 % Inside heat transfer coefficient for the bed (Haghpanah 2014) [W/m2K]
+% Outside heat transfer coefficient for the bed (Haghpanah 2014) [W/m2K]
 % Particle voidage, epsilon_p [-]
 % Molecular diffusivity of gas, Dm [m2/s]
 % Tortuosity, tau [-]
@@ -59,12 +63,16 @@ parameters.delUb_2 = -1.58e4;
 parameters.delUd_2 = 0;
 parameters.cp_g = 30.7;
 parameters.cp_a = parameters.cp_g;
-parameters.rho_s = 1130;
-parameters.rp = 1e-3;
+parameters.cp_w = 502;
 parameters.cp_s = 1070;
+parameters.rho_s = 1130;
+parameters.rho_w = 7800;
+parameters.rp = 1e-3;
 parameters.V_column = 0.066;
+parameters.t_wall = 0.003;
 parameters.e_bed = 0.37;
 parameters.h_in = 8.6; 
+parameters.h_out = 2.5; 
 parameters.epsilon_p = 0.35; 
 parameters.Dm = 1.6e-5;
 parameters.tau = 3; 
@@ -80,7 +88,7 @@ parameters.tau = 3;
 % Heating in evacuation step (1 or 0) if temperature swing, heating [-]
 % Type of pressurisation ("LPP" or "FP"), pressType [-]
 % Type of cycle ("VSA" or "PSA"), processType [-]
-% rate constant for vacuum pump, lambda [1/s]
+% Time constant for vacuum pump, lambda [1/s]
 parameters.v_in = 0.5;
 parameters.y1_in = 0.15;
 parameters.T_feed = 298;

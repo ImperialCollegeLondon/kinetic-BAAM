@@ -29,18 +29,18 @@ function run_NSGA(parameters)
 addpath(genpath(pwd))
 
 if parameters.processType == "PVSA"  % Optimization for fixed adsorbent defined in parameters using PVSA
-    lb = [0.1, log10(0.021e5),    10,    10,    10,     log10(1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
-    ub = [2,    log10(3e5),     200,  200,  200,     log10(10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
+    lb = [0.1, log10(0.021e5),    5,    5,    5,     log10(1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
+    ub = [2,    log10(5e5),     200,  200,  200,     log10(10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
     parameters.xRef = ub;
     % Linear inequality constraints: P_blo < P_ads
     A = [0, 1, 0, 0, 0,  -1];
     b = 0;
 elseif parameters.processType == "VSA"  % Optimization for fixed adsorbent defined in parameters using VSA
-    lb = [0.1, log10(0.02e5),    5,   5,   5,  0.1];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
-    ub = [2,   log10(0.5e5),    600,  200,  600,  2.0];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
+    lb = [0.1, log10(0.02e5),    5,    5,    5];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
+    ub = [2,   log10(0.90e5),    200,  200,  200];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac, V_column, p_H]
     parameters.xRef = ub;
     % Linear inequality constraints: none
-    A = [0, 0, 0, 0, 0 0];
+    A = [0, 0, 0, 0, 0];
     b = 0;
 elseif parameters.processType == "AdsorbentVSA" % Reverse engineer adsorbent assuming equal pre-exponent for each gas using VSA
     lb = [log10(0.02e5), 100,  40,  0.5, 1e-6, 10e3, 10e3];  % Lower bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b]
@@ -76,7 +76,7 @@ end
 % Genetic algorithm settings
 nVars = length(lb);
 ngens = 90;     % Maximum number of generations
-pop_size = 200; % Number of members in population of each generation [-]
+pop_size = 300; % Number of members in population of each generation [-]
 
 rng default
 parameters.fileName = convertStringsToChars(strcat(parameters.adsorbentName,"_",parameters.processType,"_",parameters.OptType,"_",parameters.modelType,"_",datestr(now,'ddmmyyhhMM')));

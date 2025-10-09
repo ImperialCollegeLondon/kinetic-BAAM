@@ -35,6 +35,7 @@ for jj = 1:length(fileNames)
     load([fileName, '.mat'])
     data = data(find(data(:,8)>95),:);
     data = data(find(data(:,9)>90),:);
+    load("Z13X_AW_2022.mat")
 
     try
         if maxTarget == "Purity"
@@ -62,6 +63,11 @@ for jj = 1:length(fileNames)
     parameters.OptType = "Unc";
 
     %% Run to CSS and output KPIs corresponding to theta
+    tic
     KPIs = kBAAM_Outputs_nonIsothermal(parameters,theta) % KPIS = [-Recovery, -Purity];
-
+    toc
+    parameters.h_out = 1e5;
+    tic
+    KPIs = kBAAM_Outputs_nonIsothermal(parameters,theta) % KPIS = [-Recovery, -Purity];
+    toc
 end

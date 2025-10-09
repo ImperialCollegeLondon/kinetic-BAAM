@@ -49,6 +49,19 @@ parameters.processType = "VSA";
 run_NSGA(parameters);
 
 %%
+parameters.adsorbentName = "Z13X";
+parameters.modelType = "nonisothermal";
+parameters.OptType = "Unc";
+parameters.processType = "VSA";
+run_NSGA(parameters);
+
+%%
+parameters.adsorbentName = "Z13X";
+parameters.modelType = "nonisothermal";
+parameters.OptType = "Unc";
+parameters.processType = "VSA";
+run_NSGA(parameters);
+%%
 parameters.adsorbentName = "Hypo";
 parameters.modelType = "nonisothermal";
 parameters.OptType = "Unc";
