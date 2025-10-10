@@ -28,7 +28,9 @@
 		
 
 ## INTRODUCTION
-The repository contains the MATLAB (and equivalent python) scripts and functions of a model for simulating a zero-dimensional time variant kinetics based cyclic adsorption process.
+The repository contains the MATLAB (and equivalent python) scripts and functions of a model for a zero-dimensional time variant kinetics-based cyclic adsorption process. Contains routines for forward simulations and multi-objective optimization of PVSA, and VSA processes.
+
+![alt text](https://github.com/ImperialCollegeLondon/kinetic-BAAM/blob/main/rawData/optExample.png?raw=true)
 
 ## INSTALLATION
 
