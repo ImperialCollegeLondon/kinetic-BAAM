@@ -76,7 +76,7 @@ end
 % Genetic algorithm settings
 nVars = length(lb);
 ngens = 90;     % Maximum number of generations
-pop_size = 300; % Number of members in population of each generation [-]
+pop_size = 200; % Number of members in population of each generation [-]
 
 rng default
 parameters.fileName = convertStringsToChars(strcat(parameters.adsorbentName,"_",parameters.processType,"_",parameters.OptType,"_",parameters.modelType,"_",datestr(now,'ddmmyyhhMM')));

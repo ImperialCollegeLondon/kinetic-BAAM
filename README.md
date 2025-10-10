@@ -28,16 +28,23 @@
 		
 
 ## INTRODUCTION
-The repository contains the matlab scripts and functions of a model for simulating a zero-dimensional time variant kinetics based cyclic adsorption process.
+The repository contains the MATLAB (and equivalent python) scripts and functions of a model for simulating a zero-dimensional time variant kinetics based cyclic adsorption process.
 
 ## INSTALLATION
 
 ### Dependencies
 
-The following dependencies are required for the proper execution of this program.
+The following dependencies are required for the proper execution of this program using MATLAB or python.
 
-1. Matlab 2020b or later *[required]*
-
+1. MATLAB 2020b or later 
+    - Global Optimization Toolbox *[required for optimization]*
+2. python 3.12 or later 
+    - numpy>=1.26
+    - scipy>=1.13
+    - pymoo>=0.6.0 *[required for optimization]*
+    - matplotlib>=3.8
+    - matplotlib-inline>=0.1.6
+    - pandas>=2.2
 
 ### Installation instructions
 
@@ -61,6 +68,17 @@ git clone https://github.com/ImperialCollegeLondon/kinetic-BAAM.git
 ## Change Log
 All notable changes to this project will be documented in this file.
  
+###  Create python version of the platform - 2025-10-10
+#### Added
+- kBAAM_ODEs_nonIsothermal_ND.py
+- kBAAM_Outputs_nonIsothermal.py
+- LDFCoefficient.py
+- DSL.py
+- run_NSGA.py
+- kBAAM_run_NSGA.py
+- pythonPort/
+
+
 ###  Initial creation of the repository - 2025-10-07
 #### Added
 - kBAAM_ODEs_nonIsothermal_ND.m
@@ -72,27 +90,3 @@ All notable changes to this project will be documented in this file.
 - plotFunctions/
 - rawData/
 - matFiles/
-
-#### Changed
-- N/A
- 
-#### Fixed
-- N/A
- 
-
-## LICENSE
-Copyright (C) 2025 Hassan Azzan
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
