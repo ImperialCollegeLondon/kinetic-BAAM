@@ -28,7 +28,7 @@
 		
 
 ## INTRODUCTION
-The repository contains the MATLAB (and equivalent python) scripts and functions of a model for a zero-dimensional time variant kinetics-based cyclic adsorption process. Contains routines for forward simulations and multi-objective optimization of PVSA, and VSA processes.
+The repository contains the MATLAB (and equivalent python) scripts and functions of a model for a zero-dimensional time variant kinetics-based cyclic adsorption process. Contains routines for forward simulations and multi-objective optimization of TVSA, PVSA, and VSA processes.
 
 ![alt text](https://github.com/ImperialCollegeLondon/kinetic-BAAM/blob/main/rawData/optExample.png?raw=true)
 
@@ -70,6 +70,8 @@ git clone https://github.com/ImperialCollegeLondon/kinetic-BAAM.git
 ## Change Log
 All notable changes to this project will be documented in this file.
  
+###  Include TVSA model for DAC process - 2025-12-12
+- 
 ###  Create python version of the platform - 2025-10-10
 #### Added
 - kBAAM_ODEs_nonIsothermal_ND.py
