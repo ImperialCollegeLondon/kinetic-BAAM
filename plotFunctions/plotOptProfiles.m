@@ -25,7 +25,7 @@
 clc; clear all;
 close all;
 addpath(genpath(pwd))
-maxTarget = "both"; % Purity, Recovery, Productivity, both (Pu and Rec)
+maxTarget = "bothcon"; % Purity, Recovery, Productivity, both (Pu and Rec)
 fileNames =    {'Z13X_PVSA_Const_nonisothermal_0810251603'};
 
 for jj = 1:length(fileNames)
@@ -35,7 +35,7 @@ for jj = 1:length(fileNames)
     load([fileName, '.mat'])
     data = data(find(data(:,8)>95),:);
     data = data(find(data(:,9)>90),:);
-    load("Z13X_AW_2022.mat")
+    load("Z13X_AW_2022_4.mat")
 
     try
         if maxTarget == "Purity"
@@ -65,9 +65,25 @@ for jj = 1:length(fileNames)
     %% Run to CSS and output KPIs corresponding to theta
     tic
     KPIs = kBAAM_Outputs_nonIsothermal(parameters,theta) % KPIS = [-Recovery, -Purity];
-    toc
-    parameters.h_out = 1e5;
-    tic
-    KPIs = kBAAM_Outputs_nonIsothermal(parameters,theta) % KPIS = [-Recovery, -Purity];
-    toc
+    kbaam = toc
+
+    model1D = 14.079827;
+    
+    x = ["0-D" "1-D"];
+    y = [kbaam model1D];
+    figure
+    % bar(y)
+
+    x = ["0D - this work" "1D"];
+y = [kbaam model1D];
+bar(x,y)
+ylabel('Simulation time [s]')
+set(gca,'FontSize',30)
+box on;grid off;set(gca,'YScale','linear','XScale','linear','LineWidth',2)
+set(gcf,'Color','white')
+
+    % parameters.h_out = 1e5;
+    % tic
+    % KPIs = kBAAM_Outputs_nonIsothermal(parameters) % KPIS = [-Recovery, -Purity];
+    % toc
 end

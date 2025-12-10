@@ -70,32 +70,89 @@ elseif parameters.processType == "AdsorbentPVSAb0" % Reverse engineer adsorbent 
     % Linear inequality constraints: b02 < b01 & P_blo < P_ads
     A = [1, 0, 0, 0, -1, 1, 0,-1];
     b = 0;
+    % elseif parameters.processType == "Resin" % Reverse engineer adsorbent assuming equal deltaU for each gas using PVSA
+    %     lb = [log10(0.051e5), 1000,  20,  0.5, 400, log10(0.05e5), 0.5];   % Lower bounds [p_I, t_ads, t_blo, qsb, t_evac, p_L, v_in]
+    %     ub = [log10(0.975e5),    30000, 400, 2.6, 20000, log10(0.5e5), 1];  % Upper bounds [p_I, t_ads, t_blo, qsb, t_evac, p_L, v_in]]
+    %     parameters.xRef = ub;
+    %     % Linear inequality constraints: b02 < b01 & P_blo < P_ads
+    %     A = [-1, 0, 0, 0, 0, 1,0];
+    %     b = 0;
+elseif parameters.processType == "Resin" % Reverse engineer adsorbent assuming equal deltaU for each gas using PVSA
+    lb = [log10(0.021e5), 1000,  20, 500, log10(0.051e5), 0.8];   % Lower bounds [p_I, t_ads, t_blo, qsb, t_evac, p_L, v_in]
+    ub = [log10(0.975e5),    150000, 1000, 45000, log10(0.2e5), 1.2];  % Upper bounds [p_I, t_ads, t_blo, qsb, t_evac, p_L, v_in]]
+    parameters.xRef = ub;
+    % Linear inequality constraints: b02 < b01 & P_blo < P_ads
+    A = [-1, 0, 0, 0, 1,0];
+    b = 0;
+    % elseif parameters.processType == "Resin" % Reverse engineer adsorbent assuming equal deltaU for each gas using PVSA
+    %     lb = [log10(0.051e5), 1000,  20,  0.5, 400, log10(0.05e5)];   % Lower bounds [p_I, t_ads, t_blo, qsb, t_evac, p_L]
+    %     ub = [log10(0.975e5),    30000, 400, 2.5, 20000, log10(0.5e5)];  % Upper bounds [p_I, t_ads, t_blo, qsb, t_evac, p_L]]
+    %     parameters.xRef = ub;
+    %     % Linear inequality constraints: b02 < b01 & P_blo < P_ads
+    %     A = [-1, 0, 0, 0, 0, 1];
+    %     b = 0;
 end
 
-%% Solve optimisation problem using genetic algorithm
-% Genetic algorithm settings
-nVars = length(lb);
-ngens = 90;     % Maximum number of generations
-pop_size = 200; % Number of members in population of each generation [-]
-
-rng default
 parameters.fileName = convertStringsToChars(strcat(parameters.adsorbentName,"_",parameters.processType,"_",parameters.OptType,"_",parameters.modelType,"_",datestr(now,'ddmmyyhhMM')));
 
-% p = sobolset(pop_size,'Skip',1e2,'Leap',1e1);
-% p = scramble(p,'MatousekAffineOwen');
-% X0 = net(p,nVars+2); X0 = X0';
-% X0 = X0(:,2:end-1);
-% ^^ Sobol sampling gives a much narrower pareto from constrained optimization 
+if parameters.processType == "Resin"
+    % qsbvals = [0.6 0.8 1 1.2 1.4 1.6 1.8 2];
+    qsbvals = [0.4:0.2:2.4];
+    qsbvals = [0.5:0.5:5];
+    for kk = 1:length(qsbvals)
+        parameters.qsb_1 = qsbvals(kk);
+        %% Solve optimisation problem using genetic algorithm
+        % Genetic algorithm settings
+        nVars = length(lb);
+        ngens = 30;     % Maximum number of generations
+        pop_size = 300; % Number of members in population of each generation [-]
+        % pop_size = 100; % Number of members in population of each generation [-]
 
-X0 = lhsdesign(pop_size,nVars); % Latin hypercube sampling to generate initial population matrix
-initPop = lb+X0.*ub; % Initial population matrix
+        rng default
 
-parameters.outputType = "opt"; % Output type needs to be "opt"
-options = optimoptions(@gamultiobj, 'Display', 'iter', 'Generations', ngens, 'PopulationSize', pop_size,'UseParallel',true,'InitialPopulationMatrix',initPop,'CrossoverFraction',0.85,'ParetoFraction',0.35,'PlotFcn','gaplotpareto','MigrationInterval',5); % ,'PlotFcn','gaplotpareto' GA options
-parameters.fileName = convertStringsToChars(strcat(parameters.adsorbentName,"_",parameters.processType,"_",parameters.OptType,"_",parameters.modelType,"_",datestr(now,'ddmmyyhhMM')));
+        % p = sobolset(pop_size,'Skip',1e2,'Leap',1e1);
+        % p = scramble(p,'MatousekAffineOwen');
+        % X0 = net(p,nVars+2); X0 = X0';
+        % X0 = X0(:,2:end-1);
+        % ^^ Sobol sampling gives a much narrower pareto from constrained optimization
+
+        X0 = lhsdesign(pop_size,nVars); % Latin hypercube sampling to generate initial population matrix
+        initPop = lb+X0.*ub; % Initial population matrix
+
+        parameters.outputType = "opt"; % Output type needs to be "opt"
+        options = optimoptions(@gamultiobj, 'Display', 'iter', 'Generations', ngens, 'PopulationSize', pop_size,'UseParallel',true,'InitialPopulationMatrix',initPop,'CrossoverFraction',0.85,'ParetoFraction',0.35,'PlotFcn','gaplotpareto','MigrationInterval',5); % ,'PlotFcn','gaplotpareto' GA options
 
 
-[x, fval] = gamultiobj(@(theta) kBAAM_Outputs_nonIsothermal(parameters,theta), nVars, A, b, [], [], lb./parameters.xRef, ub./parameters.xRef, options); % Optimize objectives using GA
+        [x, fval] = gamultiobj(@(theta) kBAAM_Outputs_nonIsothermal(parameters,theta), nVars, A, b, [], [], lb./parameters.xRef, ub./parameters.xRef, options); % Optimize objectives using GA
 
-save(['matFiles/',parameters.fileName,'.mat'])
+        save(['matFiles/',parameters.fileName,'.mat'])
+    end
+else
+
+    %% Solve optimisation problem using genetic algorithm
+    % Genetic algorithm settings
+    nVars = length(lb);
+    ngens = 90;     % Maximum number of generations
+    pop_size = 200; % Number of members in population of each generation [-]
+    % pop_size = 100; % Number of members in population of each generation [-]
+
+    rng default
+
+    % p = sobolset(pop_size,'Skip',1e2,'Leap',1e1);
+    % p = scramble(p,'MatousekAffineOwen');
+    % X0 = net(p,nVars+2); X0 = X0';
+    % X0 = X0(:,2:end-1);
+    % ^^ Sobol sampling gives a much narrower pareto from constrained optimization
+
+    X0 = lhsdesign(pop_size,nVars); % Latin hypercube sampling to generate initial population matrix
+    initPop = lb+X0.*ub; % Initial population matrix
+
+    parameters.outputType = "opt"; % Output type needs to be "opt"
+    options = optimoptions(@gamultiobj, 'Display', 'iter', 'Generations', ngens, 'PopulationSize', pop_size,'UseParallel',true,'InitialPopulationMatrix',initPop,'CrossoverFraction',0.85,'ParetoFraction',0.35,'PlotFcn','gaplotpareto','MigrationInterval',5); % ,'PlotFcn','gaplotpareto' GA options
+
+
+    [x, fval] = gamultiobj(@(theta) kBAAM_Outputs_nonIsothermal(parameters,theta), nVars, A, b, [], [], lb./parameters.xRef, ub./parameters.xRef, options); % Optimize objectives using GA
+
+    save(['matFiles/',parameters.fileName,'.mat'])
+end
 end

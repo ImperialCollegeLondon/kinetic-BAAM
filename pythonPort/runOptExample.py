@@ -37,5 +37,5 @@ parameters["processType"] = "PVSA";
 parameters['n_cores'] = 8
 
 ngens = 90
-pop_size = 100
+pop_size = 200
 Xp, Fp = run_nsga(parameters, ngens=ngens, pop_size=pop_size)

@@ -24,7 +24,7 @@
 clc; clear all;
 close all;
 addpath(genpath(pwd))
-maxTarget = "Productivity"; % Purity, Recovery, Productivity, both (Pu and Rec)addpath(genpath(pwd))
+maxTarget = "Energyo"; % Purity, Recovery, Productivity, both (Pu and Rec)addpath(genpath(pwd))
 
 Pvals = linspace(0,1e5,1000);
 T = 298;
@@ -124,12 +124,29 @@ for kk = 1:length(fileNames)
 
     subplot(1,2,1)
     hold on
+    plot(Pvals./1e5,q1, 'Color','g','LineWidth', 3); xlabel('P [bar]'); ylabel('Adsorbed amount of CO_2 [mol/kg]'); hold on;%check unit
+    % xline(parameters.y1_in.max(Pvals),  'k--', 'LineWidth', 1, 'HandleVisibility','off');
+    box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
+    subplot(1,2,2)
+    hold on
+    plot(Pvals./1e5,q2, 'Color','g','LineWidth', 3); xlabel('P [bar]'); ylabel('Adsorbed amount of N_2 [mol/kg]'); hold on;%check unit
+    % xline(parameters.y1_in.max(Pvals),  'k--', 'LineWidth', 1, 'HandleVisibility','off');
+    box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
+
+
+
+load('Z13X_AW_2022.mat')
+    [q1, x] = DSL(Pvals, 1, T, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+    [x, q2] = DSL(Pvals, 0, T, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+
+    subplot(1,2,1)
+    hold on
     plot(Pvals./1e5,q1, 'Color','r','LineWidth', 3); xlabel('P [bar]'); ylabel('Adsorbed amount of CO_2 [mol/kg]'); hold on;%check unit
     % xline(parameters.y1_in.max(Pvals),  'k--', 'LineWidth', 1, 'HandleVisibility','off');
     box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
     subplot(1,2,2)
     hold on
-    plot(Pvals./1e5,q2, 'Color','b','LineWidth', 3); xlabel('P [bar]'); ylabel('Adsorbed amount of N_2 [mol/kg]'); hold on;%check unit
+    plot(Pvals./1e5,q2, 'Color','r','LineWidth', 3); xlabel('P [bar]'); ylabel('Adsorbed amount of N_2 [mol/kg]'); hold on;%check unit
     % xline(parameters.y1_in.max(Pvals),  'k--', 'LineWidth', 1, 'HandleVisibility','off');
     box on; grid off; set(gca,"LineWidth",2,"FontName","CMU Serif","FontSize",15)
 end

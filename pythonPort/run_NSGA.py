@@ -139,6 +139,9 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
         # from pymoo.operators.crossover.hux import HUX        
         from pymoo.optimize import minimize
         from pymoo.core.problem import ElementwiseProblem
+        from pymoo.algorithms.soo.nonconvex.de import DE
+        from pymoo.core.problem import StarmapParallelization
+        from multiprocessing.pool import ThreadPool
         # import multiprocessing
         # from multiprocessing.pool import ThreadPool
         # from multiprocessing import Pool
@@ -148,7 +151,7 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
         # from pymoo.optimize import minimize
         class _Problem(ElementwiseProblem):
             def __init__(self):
-                super().__init__(n_var=n_vars, n_obj=2, n_constr=A.shape[0], xl=lb, xu=ub)
+                super().__init__(n_var=n_vars, n_obj=2, n_constr=A.shape[0], xl=lb, xu=ub,elementwise_runner=runner)
 
             def _evaluate(self, x, out, *args, **kwargs):
                 # x is a 1D array in decision space (same encoding as MATLAB)
@@ -159,7 +162,12 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
                 if A.size > 0:
                     g = A.dot(np.asarray(x)) - b
                     out['G'] = np.atleast_1d(g)
-
+                    
+        N_THREADS = n_cores
+        pool = ThreadPool(N_THREADS)
+        runner = StarmapParallelization(pool.starmap)
+        problem = _Problem()        
+                    
         # Configure algorithm. Many pymoo components accept `n_jobs` or
         # `n_processors` in newer versions; pass n_cores where applicable.
         algo_kwargs = dict(pop_size=pop_size, sampling=LHS(smooth=True, iterations=pop_size))
@@ -174,9 +182,11 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
         # environments; attempt to pass it and otherwise call without it.
         try:
             print('running parallel')
-            res = minimize(_Problem(), algo, ('n_gen', ngens), verbose=True, n_proc=n_cores)
+            res = minimize(problem, algo, ('n_gen', ngens), verbose=True, n_proc=n_cores)
         except TypeError:
-            res = minimize(_Problem(), algo, ('n_gen', ngens), verbose=True)
+            res = minimize(problem, algo, ('n_gen', ngens), verbose=True)
+            
+        pool.close()
         X = res.X
         F = res.F
 

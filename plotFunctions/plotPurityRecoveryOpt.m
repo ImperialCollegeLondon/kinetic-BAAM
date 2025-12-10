@@ -58,7 +58,7 @@ for mm = 1:length(fileNames)
     p = patch('vertices', [95, 90; 100, 90; 100, 100; 95 100], ...
         'faces', [1, 2, 3, 4], ...
         'FaceColor', 'b', ...
-        'FaceAlpha', 0.1,'HandleVisibility','off');
+        'FaceAlpha', 0.05,'HandleVisibility','off');
 
     [flag, ParetoPoints]=find_pareto_frontier(input);
     hold on
@@ -76,7 +76,7 @@ try
     scatter(litAC(:,1),litAC(:,2),50,'k',Marker='diamond',MarkerEdgeColor='g',MarkerFaceColor='k',MarkerFaceAlpha=0.5);
     scatter(lit13X(:,1),lit13X(:,2),50,'b',Marker='diamond',MarkerEdgeColor='g',MarkerFaceColor='b',MarkerFaceAlpha=0.5);
     scatter(LitAdam(:,1),LitAdam(:,2),50,'k',Marker='diamond',MarkerEdgeColor='m',MarkerFaceColor='m',MarkerFaceAlpha=1);
-    legend('13X', 'AC', 'Balashankar 2019','Balashankar 2019', 'Adam 2022','Location','southwest')
+    legend('13X', 'AC', 'Balashankar et al. 2019 (1D)','Balashankar et al.  2019 (1D)', 'Ward & Pini 2022 (1D)','Location','southwest')
 catch
     disp('fileNotFound')
 end

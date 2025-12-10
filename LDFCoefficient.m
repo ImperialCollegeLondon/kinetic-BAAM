@@ -30,6 +30,7 @@
 %  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [k1, k2] = LDFCoefficient(P,y1,T,q1_star,q2_star,parameters)
+
 Rg = 8.3145; % universal gas constant [J/molK]
 
 rp = parameters.rp; % Particle radius [m]
@@ -58,5 +59,10 @@ if isnan(ratio2)
     ratio2 = 1;
 end
 k1 = k01.*ratio1; % mass transfer coefficient of CO2
-k2 = k02.*ratio2; % mass transfer coefficient of N2
+k2 = k02.*ratio2; % mass transfer coefficient of N
+
+if parameters.processType == "Resin"
+    k01 = parameters.LDF./exp(-38.87e3./(8.314.*303));
+    k1 = k01.*exp(-38.87e3./(8.314.*T));
+end
 end

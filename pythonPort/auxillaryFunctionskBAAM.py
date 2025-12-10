@@ -9,18 +9,9 @@ driver to locate and load parameter files from the repository's
 
 from __future__ import annotations
 import os
-import argparse
-from datetime import datetime
 from typing import Dict, Any
 import scipy.io
-import numpy as np
-try:
-    from run_NSGA import run_nsga
-except Exception as e:
-    run_nsga = None  # will handle later
-import pdb
 import sys
-import os
 
 def load_adsorbent_mat(mat_name: str | None = None) -> Dict[str, Any] | None:
     """Load an adsorbent MAT-file from `AdsorbentFiles/`.

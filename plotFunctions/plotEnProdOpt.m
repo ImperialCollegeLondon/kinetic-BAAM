@@ -21,7 +21,7 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 addpath(genpath(pwd))
-close all
+% close all
 clear
 
 saveFlag = 0;
@@ -30,26 +30,49 @@ colorVals = ["b","r","m","none"];
 EdgecolorVals = ["b","r","m","k"];
 markerVals = ["square", "square","o","o"];
 
+load('Z13X_AW_2022.mat')
+fsz = 15;
 
 matNames = ["Zeolite 13X", "Activated Carbon"];
 
 fileNames =    {'Z13X_PVSA_Const_nonisothermal_0910250741',...
     'Z13X_PVSA_Const_nonisothermal_1010250858'};
+fileNames =    {['Resin_Resin_Const_nonisothermal_0512251300']};
+fileNames =    {['Resin_Resin_Const_nonisothermal_0512251656']};
 
 figure
 tiledlayout(1,1,"Padding","tight","TileSpacing","compact")
 set(gcf,'units','inch','position',[5,5,7,5],'color','w')
-title('0-D vs 1-D non-isothermal dynamic models (13X - PCCC)')
+% title('Resin Reverse Engineering')
 
-for mm = 1:length(fileNames)
-    fileName = fileNames{mm};
-    data = readmatrix([fileName, '.txt']);
+dataTemp = readmatrix([fileNames{1}, '.txt']);
+qsbvals = unique(dataTemp(:,17));
+input = [];
+conInd = [];
+abTemp = [];
 
+
+ColorsForPlotAll = brewermap(length(qsbvals),'RdYlGn');
+ColorsForPlot = ColorsForPlotAll;
+C = [175,1,1;
+    215,41,0;
+    255,82,0;
+    255,169,3;
+    254,255,7;
+    127,253,3;
+    0,250,0;
+    0,156,7;
+    0,63,13]./255;
+ColorsForPlot = C;
+ColorsForPlot = createcolormap(length(qsbvals),C(1,:),C(2,:),C(3,:),C(4,:),C(5,:),C(6,:),C(7,:),C(8,:),C(9,:));
+
+for mm = 2:length(qsbvals)
+    data = dataTemp(dataTemp(:,17)==qsbvals(mm),:);
     input = [];
     conInd = [];
     ab = [];
     for kk = 1:length(data(:,1))
-        if data(kk,8) > 95 && data(kk,9) > 90
+        if data(kk,8) > 95 && data(kk,9) > 0
             input = [input; 1./data(kk,10),data(kk,11)];
             ab = [ab;data(kk,:)];
             conInd = [conInd;kk];
@@ -57,49 +80,32 @@ for mm = 1:length(fileNames)
             conInd = [conInd;1];
         end
     end
+    % data = sortrows(ab,17);
     [flag, ParetoPoints]=find_pareto_frontier(input);
     outPareto = [1./ParetoPoints(:,1),ParetoPoints(:,2)];
 
     hold on
-    % scatter(ab(:,10),ab(:,11).*2.77778e-7.*1e3,1,'MarkerEdgeAlpha',0.05,'MarkerEdgeColor',colorVals(mm),'MarkerFaceColor','none','MarkerFaceAlpha',0.1,'HandleVisibility','off');
-    scatter(outPareto(:,1),outPareto(:,2).*2.77778e-7.*1e3,50,markerVals(mm),'MarkerEdgeColor','none','LineWidth',0.8,'MarkerFaceColor',colorVals(mm),'MarkerFaceAlpha',1);
-    box on; grid on;
-    set(gca,'YScale','linear','XScale','linear','FontSize',12,'LineWidth',1.5,'GridLineWidth',1)
-    ylabel('E_{T} [kWh/tonne]');
-    xlabel('CO_{2} Productivity [mol/m3/s]')
-    ylim([0 1400])
-end
+    kvals = 0.132.*exp(-2.076.*qsbvals);
+    scatter(ab(flag,10).*0.044.*24.*3600,ab(flag,11)*1e-6,50,repmat(qsbvals(mm),1,length(ab(flag,10))),'filled',MarkerFaceAlpha=1);
+    % scatter(ab(flag,10).*0.044.*24.*3600,ab(flag,11)*1e-6,50,repmat(kvals(mm),1,length(ab(flag,10))),'filled',MarkerFaceAlpha=1);
 
-try
-    load("AdamConst002.mat")
-catch
-    AdamData = [  0.713159491000000	433.823529400000;
-        1.15762078000000	490.196078400000;
-        1.50975338600000	568.627451000000;
-        2.15933899300000	573.529411800000;
-        2.97417626800000	593.137254900000;
-        3.47003234300000	642.156862700000;
-        4.21290681200000	671.568627500000;
-        4.30609460300000	691.176470600000;
-        4.76076409900000	742.647058800000;
-        4.92657166000000	784.313725500000;
-        4.93784111600000	830.882352900000;
-        5.20664038800000	867.647058800000;
-        5.34066100700000	867.647058800000;
-        5.46447341800000	872.549019600000;
-        5.78421265400000	879.901960800000;
-        5.92914897900000	909.313725500000;
-        6.00197089100000	941.176470600000;
-        6.18824540100000	975.490196100000;
-        6.30179907000000	982.843137300000;
-        6.38457651100000	997.549019600000;
-        6.47761269500000	1009.80392200000;
-        6.51895087900000	1014.70588200000;
-        6.60162724900000	1024.50980400000;
-        6.68440469000000	1039.21568600000;
-        6.79841318000000	1068.62745100000;
-        6.71907216500000	1220.58823500000];
+    clim([min(qsbvals) max(qsbvals)]);
+    colormap(ColorsForPlot)
+    hcb=colorbar('ver'); % colorbar handle
+    hcb.FontSize = fsz;
+    hcb.Title.String = "q_{sat}";
+    hcb.Title.String = "k_{LDF}";
+    hcb.Title.FontSize = fsz;
+    ylim([0 12])
+    xlim([0 120])
+    hcb.Limits = [min(qsbvals) max(qsbvals)];
+    % hcb.Limits = [[min(kvals) max(kvals)]];
+    box on; grid off;
+    yline(1.66,'LineWidth',1,'Color','k','LineStyle','--')
+    set(gca,'YScale','linear','XScale','linear','FontSize',fsz,'LineWidth',2,'GridLineWidth',1,'Color',[0.9 0.9 0.9])
+    ylabel('Specific Energy Consumption [MJ/kg_{CO_{2}}]');
+    xlabel('CO_{2} Productivity [kg_{CO_{2}}/m_{bed}^{3}/day]')
 end
+set(gcf,'units','inch','position',[5,5,10,6],'color','w')
 
-scatter(AdamData(:,1),AdamData(:,2),50,'o',Marker='diamond',MarkerEdgeColor='k',MarkerFaceColor='g',MarkerFaceAlpha=1);
-legend('0D k-BAAM - MATLAB', '0D k-BAAM - python','1D ADPF - MATLAB (Adam)','Location','southeast')
+patch([17.1 17.1 40.7 40.7],[3.3 5.1 5.1 3.3],'cyan','FaceAlpha',0.01,'EdgeColor','b','LineWidth',1.5);
