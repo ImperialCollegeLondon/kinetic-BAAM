@@ -27,13 +27,17 @@
 %   - k2: concentration dependent mass transfer coefficient for component 2 [1/s]
 %
 % Dependencies:
-%  
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [k1, k2] = LDFCoefficient(P,y1,T,q1_star,q2_star,parameters)
 
 Rg = 8.3145; % universal gas constant [J/molK]
 
-rp = parameters.rp; % Particle radius [m]
+if parameters.equilibrium
+    rp = 1e-5; % Particle radius [m]
+else
+    rp = parameters.rp; % Particle radius [m]
+end
 Dp = parameters.Dm/parameters.tau; % Effective pore diffusivity [m2/s]
 
 k01 = (15*parameters.epsilon_p*Dp/(rp^2)); % Adsorption rate constant for component 1 [/s]
@@ -43,8 +47,8 @@ if y1 > 0 && y1 < 1
     ratio1 = ((P.*y1./(Rg.*T))./q1_star)./parameters.rho_s; % c1/q1_Star*rho_s (mol/m^3)
     ratio2 = ((P.*(1-y1)./(Rg.*T))./q2_star)./parameters.rho_s; % c2/q2_Star*rho_s (mol/m^3)
 elseif y1 <= 0
-    ratio1 = ((P.*(1-y1)./(Rg.*T))./q2_star)./parameters.rho_s;
-    ratio2 = 1; % c2/q2_Star*rho_s (mol/m^3)
+    ratio2 = ((P.*(1-y1)./(Rg.*T))./q2_star)./parameters.rho_s;
+    ratio1 = 1; % c2/q2_Star*rho_s (mol/m^3)
 elseif y1 >= 1
     ratio1 = ((P.*y1./(Rg.*T))./q1_star)./parameters.rho_s; % c1/q1_Star*rho_s (mol/m^3)
     ratio2 = 1; % to avoid division by 0
@@ -52,11 +56,14 @@ else
     ratio1 = 1; % c1/q1_Star*rho_s (mol/m^3)
     ratio2 = 1; % to avoid division by 0
 end
+
 if isnan(ratio1)
     ratio1 = 1;
+    ratio2 = 1;
 end
 if isnan(ratio2)
     ratio2 = 1;
+    ratio1 = 1;
 end
 k1 = k01.*ratio1; % mass transfer coefficient of CO2
 k2 = k02.*ratio2; % mass transfer coefficient of N

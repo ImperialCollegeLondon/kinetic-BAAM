@@ -76,13 +76,23 @@ load('Z13X_AW_2022.mat')
 % run_NSGA(parameters);
 
 %%
-parameters.adsorbentName = "Resin";
+parameters.adsorbentName = "Resin_TLS";
 parameters.modelType = "nonisothermal";
 parameters.OptType = "Const";
 parameters.processType = "Resin";
 parameters.outputType = "opt";
+parameters.fixResins = 0;
+parameters.pressureDrop = 1;
 run_NSGA(parameters);
-
+%%
+parameters.adsorbentName = "Resin_TLS";
+parameters.modelType = "nonisothermal";
+parameters.OptType = "Const";
+parameters.processType = "Resin";
+parameters.outputType = "opt";
+parameters.fixResins = 1;
+parameters.pressureDrop = 1;
+run_NSGA(parameters);
 % %%
 % parameters.adsorbentName = "Resin";
 % parameters.modelType = "nonisothermal";
