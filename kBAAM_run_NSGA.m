@@ -25,36 +25,106 @@
 addpath(genpath(pwd))
 
 clear; close all; clc;
-load('Z13X_AW_2022.mat')
 
-%%
-% parameters.rp = 1e-3;
-% parameters.p_L = 0.02e5;
-% parameters.V_column = 0.0661;
-% parameters.outputType = "opt";
-% parameters.pressType = "FP";
-% 
+addpath(genpath(pwd))
+
+adsFiles = ["UTSA-16_VB_2019";
+    "Mg-MOF-74_VB_2019";
+    "Z13X_AW_2022";
+    "CSAC_RH_2014"];
+
+adsFiles = ["MgMOF74";
+    "Z13X";
+    "CSAC";
+    "CALF20"];
+
+
+adsFiles = ["13XW";
+    "ZNaY";
+    "ZHY";
+    "ACRB3";
+    "CALF20"];
+
+for jj = 1:length(adsFiles)
+    load(adsFiles(jj))
+    %%
+    parameters.rp = 1e-3;
+    parameters.outputType = "opt";
+    parameters.plot0D = 0;
+    parameters.plotVideo = 0;
+    parameters.layered =  0;
+    parameters.Lbyr = 7;
+    parameters.pressureDrop = 1;
+    parameters.equilibrium = 0;
+    parameters.cCSTR = 0;
+    parameters.testBT = 0;
+    parameters.testEvac =  0;
+    parameters.normPlot = 0;
+    parameters.plot0D = 0;
+    parameters.rigid = 1;
+    parameters.plotVideo = 0;
+    parameters.layered =  0;
+    parameters.adsorbentName = adsFiles(jj);
+    parameters.modelType = "nonisothermal";
+
+
+    parameters.pressType = "FP";
+    
+    parameters.processType = "PVSA";
+    parameters.OptType = "Const"; 
+    run_NSGA(parameters);
+    parameters.OptType = "Unc";
+    run_NSGA(parameters);
+
+
+    parameters.processType = "VSA";
+
+    parameters.OptType = "Const"; 
+    run_NSGA(parameters);
+    parameters.OptType = "Unc";
+    run_NSGA(parameters);
+
+
+
+
+    parameters.pressType = "LPP";
+    
+    parameters.processType = "PVSA";
+    parameters.OptType = "Const"; 
+    run_NSGA(parameters);
+    parameters.OptType = "Unc";
+    run_NSGA(parameters);
+
+
+    parameters.processType = "VSA";
+
+    parameters.OptType = "Const"; 
+    run_NSGA(parameters);
+    parameters.OptType = "Unc";
+    run_NSGA(parameters);
+end
+
 % %%
 % parameters.adsorbentName = "Z13X";
 % parameters.modelType = "nonisothermal";
 % parameters.OptType = "Const";
 % parameters.processType = "PVSA";
 % run_NSGA(parameters);
-% 
+%
 % %%
 % parameters.adsorbentName = "Z13X";
 % parameters.modelType = "nonisothermal";
 % parameters.OptType = "Const";
 % parameters.processType = "VSA";
 % run_NSGA(parameters);
-% 
+%
 % %%
 % parameters.adsorbentName = "Z13X"
 % parameters.modelType = "nonisothermal";
 % parameters.OptType = "Unc";
 % parameters.processType = "VSA";
 % run_NSGA(parameters);
-% 
+%
 % %%
 % parameters.adsorbentName = "Z13X";
 % parameters.modelType = "nonisothermal";
@@ -67,7 +137,7 @@ load('Z13X_AW_2022.mat')
 % parameters.OptType = "Unc";
 % parameters.processType = "AdsorbentVSA";
 % run_NSGA(parameters);
-% 
+%
 % %%
 % parameters.adsorbentName = "Hypo";
 % parameters.modelType = "nonisothermal";
@@ -76,28 +146,42 @@ load('Z13X_AW_2022.mat')
 % run_NSGA(parameters);
 
 %%
-parameters.adsorbentName = "Resin_TLS";
-parameters.modelType = "nonisothermal";
-parameters.OptType = "Const";
-parameters.processType = "Resin";
-parameters.outputType = "opt";
-parameters.fixResins = 0;
-parameters.pressureDrop = 1;
-run_NSGA(parameters);
-%%
-parameters.adsorbentName = "Resin_TLS";
-parameters.modelType = "nonisothermal";
-parameters.OptType = "Const";
-parameters.processType = "Resin";
-parameters.outputType = "opt";
-parameters.fixResins = 1;
-parameters.pressureDrop = 1;
-run_NSGA(parameters);
-% %%
-% parameters.adsorbentName = "Resin";
+% parameters.adsorbentName = "Resin_TLS";
 % parameters.modelType = "nonisothermal";
-% parameters.OptType = "Unc";
+% parameters.OptType = "Const";
 % parameters.processType = "Resin";
 % parameters.outputType = "opt";
-%                                                                                                                                                                      
+% parameters.fixResins = 0;
+% parameters.pressureDrop = 1;
+%     parameters.equilibrium = 0;
+%     parameters.cCSTR = 0;
+%     parameters.testBT = 0;
+%     parameters.testEvac =  0;
+%     parameters.normPlot = 0;
 % run_NSGA(parameters);
+%%
+% parameters.adsorbentName = "Resin_TLS";
+% parameters.modelType = "nonisothermal";
+% parameters.OptType = "Const";
+% parameters.processType = "Resin";
+% parameters.outputType = "opt";
+% parameters.fixResins = 1;
+% parameters.pressureDrop = 1;
+%     parameters.equilibrium = 0;
+%     parameters.cCSTR = 0;
+%     parameters.testBT = 0;
+%     parameters.testEvac =  0;
+%     parameters.normPlot = 0;
+%     parameters.plot0D = 0;
+%     parameters.rigid = 1;
+%     parameters.plotVideo = 0;
+%     parameters.layered =  0;
+% run_NSGA(parameters);
+% % %%
+% % parameters.adsorbentName = "Resin";
+% % parameters.modelType = "nonisothermal";
+% % parameters.OptType = "Unc";
+% % parameters.processType = "Resin";
+% % parameters.outputType = "opt";
+% %
+% % run_NSGA(parameters);

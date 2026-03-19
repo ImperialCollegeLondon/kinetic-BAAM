@@ -47,24 +47,26 @@ if y1 > 0 && y1 < 1
     ratio1 = ((P.*y1./(Rg.*T))./q1_star)./parameters.rho_s; % c1/q1_Star*rho_s (mol/m^3)
     ratio2 = ((P.*(1-y1)./(Rg.*T))./q2_star)./parameters.rho_s; % c2/q2_Star*rho_s (mol/m^3)
 elseif y1 <= 0
-    ratio2 = ((P.*(1-y1)./(Rg.*T))./q2_star)./parameters.rho_s;
-    ratio1 = 1; % c2/q2_Star*rho_s (mol/m^3)
+    ratio2 = ((P.*(1-0)./(Rg.*T))./q2_star)./parameters.rho_s;
+    ratio1 = 1./(parameters.qsb_1.*parameters.bo_1.*exp(-parameters.delUb_1./(Rg.*T)) + parameters.qsd_1.*parameters.do_1.*exp(-parameters.delUd_1./(Rg.*T)))./parameters.rho_s; % c2/q2_Star*rho_s (mol/m^3)
+    % ratio1 = 1 ; % c2/q2_Star*rho_s (mol/m^3); % to avoid division by 0
 elseif y1 >= 1
-    ratio1 = ((P.*y1./(Rg.*T))./q1_star)./parameters.rho_s; % c1/q1_Star*rho_s (mol/m^3)
-    ratio2 = 1; % to avoid division by 0
+    ratio1 = ((P.*1./(Rg.*T))./q1_star)./parameters.rho_s; % c1/q1_Star*rho_s (mol/m^3)
+    ratio2 = 1./(parameters.qsb_2.*parameters.bo_2.*exp(-parameters.delUb_2./(Rg.*T)) + parameters.qsd_2.*parameters.do_2.*exp(-parameters.delUd_2./(Rg.*T)))./parameters.rho_s; % c2/q2_Star*rho_s (mol/m^3); % to avoid division by 0
+    % ratio2 = 1 ; % c2/q2_Star*rho_s (mol/m^3); % to avoid division by 0
 else
-    ratio1 = 1; % c1/q1_Star*rho_s (mol/m^3)
-    ratio2 = 1; % to avoid division by 0
+    ratio1 = 1;
+    ratio2 = 1;
 end
 
 if isnan(ratio1)
-    ratio1 = 1;
-    ratio2 = 1;
+    ratio1 = 1./(parameters.qsb_1.*parameters.bo_1.*exp(-parameters.delUb_1./(Rg.*T)) + parameters.qsd_1.*parameters.do_1.*exp(-parameters.delUd_1./(Rg.*T)))./parameters.rho_s;
 end
 if isnan(ratio2)
-    ratio2 = 1;
-    ratio1 = 1;
+    ratio2 = 1./(parameters.qsb_2.*parameters.bo_2.*exp(-parameters.delUb_2./(Rg.*T)) + parameters.qsd_2.*parameters.do_2.*exp(-parameters.delUd_2./(Rg.*T)))./parameters.rho_s;
 end
+
+
 k1 = k01.*ratio1; % mass transfer coefficient of CO2
 k2 = k02.*ratio2; % mass transfer coefficient of N
 
@@ -72,4 +74,7 @@ if parameters.processType == "Resin"
     k01 = parameters.LDF./exp(-38.87e3./(8.314.*303));
     k1 = k01.*exp(-38.87e3./(8.314.*T));
 end
+
+% k1 = 0.02;
+% k2 = 0.1;
 end
