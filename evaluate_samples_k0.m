@@ -1,4 +1,4 @@
-function [outputs] = evaluate_samples_opt(inputs,parameters,numOut,maxTime,flag1D)
+function [outputs] = evaluate_samples_k0(inputs,parameters,numOut,maxTime,flag1D,flagk0)
 % A sub-function for evaluating the objective function for all members of a
 % population in parallel (with a time limitation per evaluation) using parfeval
 
@@ -8,10 +8,15 @@ max_duration = maxTime; % Maximum allowed simulation time before termination [s]
 
 outputs = zeros(size(inputs, 1), numOut); % Array for storing model outputs
 for j = 1:N_points
+    if flagk0
+     parameters.LDFFactor = inputs(j, end);
+    else
+    parameters.rp =    inputs(j, end);
+    end
     if flag1D
         F(j) = parfeval(@pvsa_comp, 1, parameters,inputs(j, :));
     else
-        F(j) = parfeval(@kBAAM_Outputs_nonIsothermal_dP , 1, parameters,inputs(j, :));
+        F(j) = parfeval(@kBAAM_Outputs_nonIsothermal_dP, 1, parameters,inputs(j, :));
     end
 end
 
@@ -31,7 +36,7 @@ while (all_completed == 0) && (toc < max_duration)
             catch
                 cancel(F(1, j))
                 completed_sims(j) = 1;
-                disp(inputs(j, :));
+                disp(inputs(j, :))
             end
         end
 

@@ -7,318 +7,289 @@
 % Authors:  Hassan Azzan (HA), Ayca Yilmaz (AY)
 %
 % Purpose:
-% Function that takes dimensionless t (time), X (column vector of states), parameters (structure
-% of the parameter for the process), and stepName (the indicated step for
-% the cycle) as inputs and returns vector of ODEs dXdt as an output. Same
-% script is used to simulate both isothermal and non-isothermal models.
+% Evaluates the RHS of the dimensionless ODEs for the non-isothermal k-BAAM with pressure
+% drop. Takes dimensionless time t, state vector X, parameters struct, cycle step name,
+% and optional mode flag, and returns dXdt. Handles four PSA steps (ads, blo, evac, pres)
+% via a switch statement. Supports both isothermal and non-isothermal models.
+%
+% The DAE system is written in semi-explicit mass-matrix form M*dX/dt = f. The function
+% solves this directly by computing M\f at each call, using a 6x6 LU factorisation.
+% This is efficient for the 6-state system here and avoids solver overhead from the
+% odeset Mass option, which offers no benefit for small, strongly state-dependent M.
+%
+% State vector X (all dimensionless):
+%   X(1) = y1     mole fraction of component 1 (CO2)        [-]
+%   X(2) = q1/qRef  adsorbed amount of component 1           [-]
+%   X(3) = q2/qRef  adsorbed amount of component 2 (N2)      [-]
+%   X(4) = T/TRef   gas and solid temperature                 [-]
+%   X(5) = Tw/TwRef wall temperature                          [-]
+%   X(6) = P/PRef   total pressure                            [-]
+%
+% Equilibrium model: DSL (default) or SSLSTA (parameters.SSLSTA = 1)
+% Kinetics: Linear Driving Force (LDF) via LDFCoefficient.m
+% Flow: Darcy's law with linear pressure profile along bed length
+% Pressure drop: Ergun-based Darcy permeability precomputed in Outputs
 %
 % Last modified:
+% - 2026-04-23, HA: Add section headers, inline comments, precomputed constants,
+%                   state clamping, dimensional caching, fewer LDF calls in ads step,
+%                   remove buildMassMatrix / mode-switching infrastructure
 % - 2025-10-09, HA: Add wall energy balance
 % - 2025-09-21, HA: Initial creation
 %
 % Input arguments:
-%   - t: dimensionless time
-%   - X: column vector of dimensionless state variables
-%   - parameters: contains adsorbent properties and process parameters
-%   - stepName: step being simulated
+%   - t:          dimensionless time [-]
+%   - X:          6x1 column vector of dimensionless state variables (see above)
+%   - parameters: struct of adsorbent properties and process parameters
+%   - stepName:   string identifying the current cycle step ('ads','blo','evac','pres')
 %
 % Output arguments:
-%   - dXdt: vector of time derivatives (ODEs) of y1, q1, q2, T, Tw
+%   - dXdt: 6x1 vector of time derivatives
+%
+% Local functions:
+%   - getEquilibriumLoadings: wraps DSL/SSLSTA isotherm call
+%   - buildMassMatrix:        assembles sparse 6x6 mass matrix M (called internally)
 %
 % Dependencies:
 %   - DSL.m
+%   - SSLSTA.m
 %   - LDFCoefficient.m
+%   - computeDSLHeatUnary.m
+%   - computeSSLSTAHeatBinaryBT.m
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function dXdt = kBAAM_ODEs_nonIsothermal_ND_dP(t,X,parameters,stepName)
-y1 = max(X(1),eps) ; % Molar fraction of component 1 from the column vector X
-% y1 = X(1)  ; % Molar fraction of component 1 from the column vector X
-q1 = X(2) ; % Adsorbed phase concentration of component 1 from the column vector X
-q2 = X(3) ; % Adsorbed phase concentration of component 2 from the column vector X
-T  = X(4) ; % Gas/Solid temperature from the column vector X
-Tw = X(5) ; % Column wall temperature from the column vector X
-P = X(6) ; % Column pressure from the column vector X
 
-R = 8.3145; % Universal gas constant [J/molK]
+% Unpack state variables
+y1 = max(0,min(1,X(1)));   % mole fraction of component 1 [-]
+q1 = X(2);   % dimensionless adsorbed amount of component 1 [-]
+q2 = X(3);   % dimensionless adsorbed amount of component 2 [-]
+T  = max(X(4),1e-9);   % dimensionless temperature [-]
+Tw = X(5);   % dimensionless wall temperature [-]
+P  = max(X(6),1e-9);   % dimensionless pressure [-]
 
-dXdt = zeros(size(X)); % initialize vector of ODEs
+R = 8.3145;  % universal gas constant [J/molK]
 
-% Reference values for non-dimensionalization
-% volFluxRef = parameters.volFluxRef; % reference molar flowrate per unit volume [mol/m3s]
-timeRef = parameters.timeRef;  % reference time [s]
-qRef = parameters.qRef; % reference adsorbed amount [mol/kg]
-TRef = parameters.TRef; % reference temperature [K]
-TwRef = parameters.TwRef; % reference temperature [K]
-PRef = parameters.PRef; % reference pressure [Pa]
+% Use precomputed constants (set in Outputs before cycle loop)
+tRef  = parameters.timeRef;
+qRef  = parameters.qRef;
+TRef  = parameters.TRef;
+TwRef = parameters.TwRef;
+PRef  = parameters.PRef;
+Ab    = parameters.Ab;                    % (1-e)/e
+coeff_q  = parameters.Ab_rhos_qRef_tRef;  % Ab*rho_s*qRef/tRef
+cp_a  = parameters.cp_a;
+cp_g  = parameters.cp_g;
+e   = parameters.e_bed;
+V   = parameters.V_column;
+L   = parameters.L;
+A   = parameters.A_in;
+tRef_qRef = parameters.tRef_qRef;         % tRef/qRef
+darcyK    = parameters.darcyK;            % Darcy permeability factor
+cpg_eV    = parameters.cpg_eV;            % cp_g/(V*e)
+two_hin   = parameters.two_hin_rin_e;     % 2*h_in/(r_in*e)
 
-Qheat = 0; % heat input due to external heating [W/m3]
+% Cache dimensional pressure and temperature (used repeatedly)
+P_dim = P .* PRef;
+T_dim = T .* TRef;
 
-dy1dt = 0;
-dq1dt = 0;
-dq2dt = 0;
-dTdt = 0;
-dTwdt = 0;
-dPdt = 0;
+Qheat = 0; % external heat input [W/m3] (only nonzero in evac with heating)
 
-% parameters.rp = 1e-6;
-
-
+% ---- Step-specific: equilibrium, kinetics, and flow ----
 switch stepName
-    case 'ads' %for the case when the stepName is indicated as the adsorption step ('ads')
-        P_out = parameters.P_ads(t.*timeRef)./PRef; % dimensionless pressure inside the column as the adsorption pressure as a function of time
-
-        if ~parameters.pressureDrop
-            P = P_out;
-        end
-        % parameters.h_out = 5;
-        % parameters.h_in = 5;
-        % Competitive equilibrium adsorbed amount and LDF coefficient for
-        % both species at P, T, y1.
-        % The driving force for adsorption step is given by the difference
-        % between instantaneous adsorbed amount and the equilibrium amount
-        % at FEED COMPOSITION (y1_in) at P,T.
-
-        if ~parameters.SSLSTA
-            [q1_starIn, q2_starIn] = DSL(P.*PRef, parameters.y1_in, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-            [q1_start, q2_start] = DSL(P.*PRef, y1, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-        else
-            [q1_starIn, q2_starIn] = SSLSTA(P.*PRef, parameters.y1_in, T.*TRef, parameters);
-            [q1_start, q2_start] = SSLSTA(P.*PRef, y1, T.*TRef, parameters);
-        end
-        if q2_starIn < q2_start
-            q2_star = q2_start;
-            frac2 = 1;
-        else
-            q2_star = q2_starIn;
-            frac2 = q2_starIn./(q2*qRef );
-        end
-
-        if q1_starIn < q1_start
-            q1_star = q1_start;
-            frac1 = 1;
-        else
-            q1_star = q1_starIn;
-            frac1 = (q1_starIn)./(q1*qRef);
-        end
+    case 'ads'
+        P_out = parameters.P_ads(t.*tRef) ./ PRef;
 
         if parameters.cCSTR
-            q1_star = q1_start;
-            q2_star = q2_start;
-            frac1 = 1;
-            frac2 = 1;
-        end
-
-        [k1In, k2In] = LDFCoefficient(P.*PRef,y1,T.*TRef, q1_starIn   ,q2_starIn   ,parameters);
-        [k1t, k2t] = LDFCoefficient(P.*PRef,y1,T.*TRef, q1_start   ,q2_start    ,parameters);
-
-        x1Init = parameters.y1init./parameters.y1_in;
-        % x1Init = parameters.q1init./q1_starIn;
-        % dq1dt = timeRef./qRef.* k1c * (q1_star - q1.*qRef); % calculates the time derivative of q1
-        % dq1dt = timeRef./qRef.* k1 *  (x1Init.*(q1_start  - q1_starIn) + (q1_starIn  - q1.*qRef)); % calculates the time derivative of q1
-        % dq2dt = yInit.*timeRef./qRef.* k2t *  (q2_start    - q2.*qRef); % calculates the time derivative of q1
-        %         if parameters.SSLSTA
-        % x1Init = y1./parameters.y1_in;
-        %         end
-        % dq1dt = x1Init2.*timeRef./qRef.* (x1Init.*k1t *  (q1_start  - q1.*qRef) + (1-x1Init).*k1In *  (q1_starIn  - q1.*qRef)); % calculates the time derivative of q1
-        % dq2dt = 1.*timeRef./qRef.* (k2In *  (1-x1Init2).*(q2_start    - q2.*qRef) + k2t *  (q1*qRef./q1_starIn).*(q2_starIn    - q2.*qRef)); % calculates the time derivative of q1
-        % dq1dt = (1-x1Init).*timeRef./qRef.* (k1In * (q1_starIn    - q1.*qRef)) + (x1Init).*timeRef./qRef.* (k1t * (q1_start   - q1.*qRef)); % calculates the time derivative of q1
-        % dq2dt = 1.*timeRef./qRef.* (k2t * (q2_start    - q2.*qRef)); % calculates the time derivative of q1
-        % dq1dt = (1-x1Init).*timeRef./qRef.* (k1In * (q1_starIn    - q1.*qRef)) + (x1Init).*timeRef./qRef.* (k1t * (q1_starIn   - q1.*qRef)); % calculates the time derivative of q1
-        % dq1dt = (1-x1Init).*timeRef./qRef.* (k1In * (q1_starIn    - q1.*qRef)) + (x1Init).*timeRef./qRef.* (k1In * (q1_starIn   - q1.*qRef)); % calculates the time derivative of q1
-        % dq2dt = (1-1).*timeRef./qRef.* (k2In * (q2_starIn    - q2.*qRef)) + (x1Init).*timeRef./qRef.* (k2t * (q2_start   - q2.*qRef)); % calculates the time derivative of q1
-        % dq2dt = timeRef./qRef.* ((1-x1Init).*k2In *  (q2_start - q2.*qRef) + (x1Init).*k2t *  (q2_starIn  - q2.*qRef)); % calculates the time derivative of q1
-        % dq1dt = timeRef./qRef.* k1In * (q1_starIn    - q1.*qRef); % calculates the time derivative of q1
-        % dq2dt = timeRef./qRef.* k2t * (q2_start    - q2.*qRef); % calculates the time derivative of q1
-        % dq1dt = timeRef./qRef.* k1 *  ((x1Init).*(q1_starIn  - q1.*qRef)  ); % calculates the time derivative of q1
-        % dq2dt = timeRef./qRef.* k2 *  (q2_start  - q2.*qRef) ; % calculates the time derivative of q2
-        % dq2dt = timeRef./qRef.* k2c * (q2_star1 - q2.*qRef)*q2_star./(q2.*qRef); % calculates the time derivative of q2
-
-        % dq1dt = (1-x1Init).*timeRef./qRef.* (k1In * (q1_starIn    - q1.*qRef)) + (x1Init).*timeRef./qRef.* (k1t * (q1_start  - q1.*qRef)); % calculates the time derivative of q1
-        dq1dt = timeRef./qRef.* k1In * (q1_starIn  - q1.*qRef); % calculates the time derivative of q1
-        dq2dt = timeRef./qRef.* k2t  * (q2_start   - q2.*qRef); % calculates the time derivative of q1
-
-
-        if parameters.cCSTR
-            dq1dt =  timeRef./qRef.* (k1t * (q1_start    - q1.*qRef)); % calculates the time derivative of q1
-            dq2dt =  timeRef./qRef.* (k2t * (q2_start    - q2.*qRef)); % calculates the time derivative of q1
-        end
-
-
-        outletFlag = 1;
-
-        parameters.F_in = parameters.volFlowin.*(2.*P-P_out).*PRef./(R.*1.*TRef); % inlet molar flowrate (ideal gas) [mol/s]
-
-        if parameters.pressureDrop
-            voutHalf = (-1./(parameters.L)).*(4./150./1.72e-5).*(parameters.e_bed./(1 - parameters.e_bed)).^2.*parameters.rp.^2.*2.*(P_out.*PRef-P.*PRef);
-            FoutHalf = ((P_out).*PRef.*parameters.A_in.*parameters.e_bed./(R.*0.5.*(T+T).*TRef)).*voutHalf;
-            dPdt = (P.*PRef./(T.*TRef) * dTdt.*(TRef./timeRef) - R.*T.*TRef.*(1 - parameters.e_bed)./parameters.e_bed  * parameters.rho_s * (dq1dt + dq2dt) + R.*T.*TRef.*((parameters.F_in-FoutHalf)./(parameters.e_bed.*parameters.V_column)))./(PRef./timeRef);
+            % cCSTR mode: both components use outlet composition equilibrium
+            [q1_start, q2_start] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+            [k1t, k2t] = LDFCoefficient(P_dim, y1, T_dim, q1_start, q2_start, parameters);
+            dq1dt = tRef_qRef .* k1t .* (q1_start - q1.*qRef);
+            dq2dt = tRef_qRef .* k2t .* (q2_start - q2.*qRef);
         else
-            dPdt = 0 ; % pressure derivative with respect to time [dimensionless]
-        end
-    case 'blo' % for the case when the stepName is indicated as the blowdown step ('blo')
-        P_out = parameters.P_blo(t.*timeRef)./PRef; % dimensionless pressure inside the column as a function of time
-
-        if ~parameters.pressureDrop
-            P = P_out;
-        end
-
-        % Competitive equilibrium adsorbed amount and LDF coefficient for
-        % both species at P, T, y1
-        % The driving force for adsorption step is given by the difference
-        % between instantaneous adsorbed amount and the equilibrium amount
-        % at OUTLET COMPOSITION (y1) at P,T.
-        if ~parameters.SSLSTA
-            [q1_star , q2_star ] = DSL(P.*PRef, y1, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-            % [q1_starMax , q2_starMax ] = DSL(P.*PRef, parameters.y1_in, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-        else
-            [q1_star , q2_star ] = SSLSTA(P.*PRef, y1, T.*TRef, parameters);
+            % Default mode: CO2 uses feed-side equilibrium, N2 uses outlet equilibrium
+            [q1_starIn, q2_starIn] = getEquilibriumLoadings(P, parameters.y1_in, T, PRef, TRef, parameters);
+            [q1_start, q2_start]   = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+            [k1In, ~]  = LDFCoefficient(P_dim, y1, T_dim, q1_starIn, q2_starIn, parameters);
+            [~, k2t]   = LDFCoefficient(P_dim, y1, T_dim, q1_start,  q2_start,  parameters);
+            dq1dt = tRef_qRef .* k1In .* (q1_starIn - q1.*qRef);
+            dq2dt = tRef_qRef .* k2t  .* (q2_start  - q2.*qRef);
         end
 
-        % q1_star = (q1_starMax-q1.*qRef)./(q1_starMax-parameters.q1init).*q1_star;
+        % Inlet flow from feed specification: F_in = v_in*A*e * P_in/(R*T_feed)
+        % where P_in = 2*P_avg - P_out (linear pressure profile)
+        F_in  = parameters.volFlowin .* (2.*P - P_out) .* PRef ./ (R .*  TRef);
+        y1_in = parameters.y1_in;
 
-        [k1, k2] = LDFCoefficient(P.*PRef,y1,T.*TRef,q1_star,q2_star,parameters);
-        dq1dt = timeRef./qRef.* k1 * (q1_star - q1.*qRef); % calculates the time derivative of q1
-        dq2dt = timeRef./qRef.* k2 * (q2_star - q2.*qRef); % calculates the time derivative of q2
+        % Outlet flow from Darcy's law at product end
+        v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
+        Fout  = P_out.*PRef .* A .* e ./ (R .* T.*TRef) .* v_out;
 
-        outletFlag = 1;
+    case 'blo'
+        P_out = parameters.P_blo(t.*tRef) ./ PRef;
 
-        parameters.F_in = 0;
+        % Equilibrium at outlet composition
+        [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
 
-        if parameters.pressureDrop
-            voutHalf = (-1./(parameters.L) .*(4./150./1.72e-5).*(parameters.e_bed./(1 - parameters.e_bed)).^2.*parameters.rp.^2.*(P_out.*PRef-P.*PRef));
-            FoutHalf = (P_out.*PRef.*parameters.A_in.*parameters.e_bed./(R.*0.5.*(T+T).*TRef)).*voutHalf;
-            dPdt = (P.*PRef./(T.*TRef) * dTdt.*(TRef./timeRef) - R.*T.*TRef.*(1 - parameters.e_bed)./parameters.e_bed * parameters.rho_s * (dq1dt + dq2dt) + R.*T.*TRef.*((parameters.F_in-FoutHalf)./(parameters.e_bed.*parameters.V_column)))./(PRef./timeRef);
-        else
-            dPdt = parameters.dPdt_blo(t.*timeRef)./(PRef./timeRef); % calculates pressure derivative in blowdown tep with respect to time
-        end
+        % LDF coefficient evaluated at initial (pre-blowdown) conditions
+        [k1, k2] = LDFCoefficient(P_dim,parameters.y1init,T_dim,parameters.q1init,parameters.q2init,parameters);
+        dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
+        dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
+
+        F_in  = 0;
+        y1_in = 0;
+
+        % Outlet flow from Darcy (co-current, factor of 2 for linear profile)
+        v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
+        Fout  = P_dim .* A .* e ./ (R .* T_dim) .* v_out;
+
     case 'evac'
-        P_out = parameters.P_evac(t.*timeRef)./PRef; % dimensionless pressure inside the column as a function of time
+        P_out = parameters.P_evac(t.*tRef) ./ PRef;
 
-        if ~parameters.pressureDrop
-            P = P_out;
-        end
-        % Competitive equilibrium adsorbed amount and LDF coefficient for
-        % both species at P, T, y1
-        % at OUTLET COMPOSITION (y1) at P,T.
-        if ~parameters.SSLSTA
-            [q1_star , q2_star ] = DSL(P.*PRef, y1, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-        else
-            [q1_star , q2_star ] = SSLSTA(P.*PRef, y1, T.*TRef, parameters);
-        end
+        % Equilibrium at outlet composition
+        [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
 
-        [k1, k2] = LDFCoefficient(P.*PRef,y1,T.*TRef,q1_star,q2_star,parameters);
+        [k1, k2] = LDFCoefficient(P_dim, y1, T_dim, q1_star, q2_star, parameters);
+        dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
+        dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
 
-        dq1dt = timeRef./qRef.* k1 * (q1_star - q1.*qRef); % calculates the time derivative of q1
-        dq2dt = timeRef./qRef.* k2 * (q2_star - q2.*qRef); % calculates the time derivative of q2
-
-
-        outletFlag = 1;
-
+        % External heating (temperature swing)
         if parameters.heating
-            if T.*TRef < parameters.Theat
-                Qheat = parameters.heatPowerDensity.*(parameters.Theat-T.*TRef)./(parameters.Theat-TRef)./(parameters.r_out-parameters.r_in); % external heat flux if heating is used
-            else
-                Qheat = 0;
+            if T_dim < parameters.Theat
+                Qheat = parameters.heatPowerDensity .* (parameters.Theat - T_dim) ...
+                    ./ (parameters.Theat - TRef) ./ (parameters.r_out - parameters.r_in);
             end
         end
 
-        parameters.F_in = 0;
-        if parameters.pressureDrop
-            voutHalf = (-1./(parameters.L) .*(4./150./1.72e-5).*(parameters.e_bed./(1 - parameters.e_bed)).^2.*parameters.rp.^2.*(P_out.*PRef-P.*PRef));
-            FoutHalf = (P_out.*PRef.*parameters.A_in.*parameters.e_bed./(R.*0.5.*(T+T).*TRef)).*voutHalf;
-            dPdt = (P.*PRef./(T.*TRef) * dTdt.*(TRef./timeRef) - R.*T.*TRef.*(1 - parameters.e_bed)./parameters.e_bed * parameters.rho_s * (dq1dt + dq2dt) + R.*T.*TRef.*((parameters.F_in-FoutHalf)./(parameters.e_bed.*parameters.V_column)))./(PRef./timeRef);
-        else
-            dPdt = parameters.dPdt_evac(t.*timeRef)./(PRef./timeRef); % calculates pressure derivative in evacuation tep with respect to time
-        end
+        F_in  = 0;
+        y1_in = 0;
+
+        % Outlet flow from Darcy (counter-current exit at feed end)
+        v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
+        Fout  = P_dim .* A .* e ./ (R .* T_dim) .* v_out;
+
     case 'pres'
-        P_out = parameters.P_press(t.*timeRef)./PRef; % dimensionless pressure inside the column as a function of time
+        P_out = parameters.P_press(t.*tRef) ./ PRef;
 
-        if ~parameters.pressureDrop
-            P = P_out;
-        end
+        % Equilibrium at instantaneous composition
+        [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
 
-        % Competitive equilibrium adsorbed amount and LDF coefficient for
-        % both species at P, T, y1
-        % at INSTANTANEOUS COMPOSITION (y1) at P,T.
-        if ~parameters.SSLSTA
-            [q1_star , q2_star ] = DSL(P.*PRef, y1, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-        else
-            [q1_star , q2_star ] = SSLSTA(P.*PRef, y1, T.*TRef, parameters);
-        end
+        [k1, k2] = LDFCoefficient(P_dim, y1, T_dim, q1_star, q2_star, parameters);
+        dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
+        dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
 
-        [k1, k2] = LDFCoefficient(P.*PRef,y1, T.*TRef,q1_star,q2_star,parameters);
-
-        dq1dt = timeRef./qRef.* k1 * (q1_star - q1.*qRef); % calculates the time derivative of q1
-        dq2dt = timeRef./qRef.* k2 * (q2_star - q2.*qRef); % calculates the time derivative of q2
-
-        outletFlag = 0;
-        FoutHalf = 0;
-        if parameters.pressureDrop
-
-            vinHalf = -(-1./parameters.L .*(4./150./1.72e-5).*(parameters.e_bed./(1 - parameters.e_bed)).^2.*parameters.rp.^2.*(P_out.*PRef-P.*PRef));
-            parameters.F_in = (P_out.*PRef.*parameters.A_in.*parameters.e_bed./(R.*0.5.*(T+1).*TRef)).*vinHalf;
-            dPdt = (P.*PRef./(T.*TRef) * dTdt.*(TRef./timeRef) - R.*T.*TRef.*(1 - parameters.e_bed)./parameters.e_bed * parameters.rho_s * (dq1dt + dq2dt) + R.*T.*TRef.*((parameters.F_in-FoutHalf)./(parameters.e_bed.*parameters.V_column)))./(PRef./timeRef);
-        else
-            dPdt = parameters.dPdt_press(t.*timeRef)./(PRef./timeRef);
-        end
-        if parameters.pressType == "LPP" % If the pressurization is LPP set the composition of the inlet to be that of the light product from Adsorption (an input)
-            parameters.y1_in = parameters.y1_LPP;
-        end
-end
-
-if parameters.SSLSTA
-    [delH1,delH2] = computeSSLSTAHeatBinary(P.*PRef./1e5, y1, T.*TRef, parameters);
-else
-    [delH1,delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
-end
-
-if parameters.processType == "Resin"
-    delH1 = -parameters.delUb_1;
-    delH2 = -parameters.delUb_2;
-end
-
-switch stepName
-    case 'ads'
-        Fout = parameters.F_in - (1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (dq1dt + dq2dt)./(timeRef./qRef) + (parameters.e_bed / (R*T.*TRef)) * dPdt.*(PRef./timeRef) * parameters.V_column + (parameters.e_bed .* P / (R*(T.*TRef).^2)) * dTdt.*(TRef./timeRef) * parameters.V_column ; %calculates the outlet flow rate with respect to the time gradients of q1 and q2 (mol/s)
-    case 'blo'
-        Fout = -(1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (dq1dt + dq2dt)./(timeRef./qRef) - (parameters.e_bed / (R*T.*TRef)) * dPdt.*(PRef./timeRef) * parameters.V_column + (parameters.e_bed .* P / (R*(T.*TRef).^2)) * dTdt.*(TRef./timeRef) * parameters.V_column ; %calculates the outlet flow rate of the blowdown step
-    case 'evac'
-        Fout = -(1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (dq1dt + dq2dt)./(timeRef./qRef) - (parameters.e_bed / (R*T.*TRef)) * dPdt.*(PRef./timeRef) * parameters.V_column + (parameters.e_bed .* P / (R*(T.*TRef).^2)) * dTdt.*(TRef./timeRef) * parameters.V_column ;
-    case 'pres'
-        parameters.F_in = (1 - parameters.e_bed) * parameters.V_column * parameters.rho_s * (dq1dt + dq2dt)./(timeRef./qRef)  + (parameters.e_bed / (R*T.*TRef)) * dPdt.*(PRef./timeRef) * parameters.V_column - (parameters.e_bed .* P / (R*(T.*TRef).^2)) * dTdt.*(TRef./timeRef) * parameters.V_column ;  %calculates the inlet flow rate of the pressurization step
+        % Inlet flow from Darcy (gas enters column)
+        v_in = (2/L) .* darcyK .* (P_out - P) .* PRef;
+        F_in = P_out.*PRef .* A .* e ./ (R .* TRef) .* v_in;
         Fout = 0;
+
+        if parameters.pressType == "LPP"
+            y1_in = parameters.y1_LPP;
+        else
+            y1_in = parameters.y1_in;
+        end
 end
 
-% Calculates the derivative of temperature with respect to time (K/s) (dimensionless)
-if parameters.modelType == "isothermal"
-    dTdt = 0; % set temperature derivative to 0 if isothermal
+% ---- Assemble RHS (source terms only, no cross-derivative terms) ----
+f = zeros(6, 1);
+
+% Row 1: Species balance — flow source only
+f(1) = R.*T_dim ./ P_dim .* (y1_in.*F_in - y1.*Fout) ./ (e.*V);
+
+% Rows 2,3: Adsorbed phase (LDF kinetics)
+f(2) = dq1dt;
+f(3) = dq2dt;
+
+% Row 4: Energy balance — flow enthalpy + wall heat transfer
+if ~parameters.isIsothermal
+    f(4) = cpg_eV .* (F_in.*TRef - Fout.*T_dim) ...
+         - two_hin .* (T_dim - Tw.*TwRef);
+end
+
+% Row 5: Wall energy balance
+if ~parameters.isIsothermal
+    f(5) = parameters.wall_prefactor .* ...
+        (+parameters.wall_coeff1 .* (T_dim - Tw.*TwRef) ...
+         -parameters.wall_coeff2 .* (Tw.*TwRef - TRef) ...
+         + Qheat);
+end
+
+% Row 6: Overall material balance — flow source only
+f(6) = R.*T_dim .* (F_in - Fout) ./ (e.*V);
+
+M = buildMassMatrix(y1,q1,q2,T,P,parameters,R,tRef,qRef,TRef,PRef,Ab,coeff_q,cp_a,cp_g);
+dXdt = M\f;
+end
+
+function [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters)
+if parameters.SSLSTA
+    [q1_star, q2_star] = SSLSTA(P.*PRef, y1, T.*TRef, parameters);
 else
-    coefft1 = timeRef./TRef./(((1 - parameters.e_bed)./ parameters.e_bed).*(parameters.rho_s.*parameters.cp_s + parameters.cp_a.* parameters.rho_s.*qRef.*(q1+q2))); % Reciprocal of the coefficient of the temperature derivative wrt to time
-    dTdt = coefft1.*(...
-        +  ((parameters.F_in ) ./(parameters.V_column.*parameters.e_bed).*parameters.cp_g.*(TRef)) ...
-        -  ((Fout)./             (parameters.V_column.*parameters.e_bed).*parameters.cp_g.*(TRef.*T)) ...
-        -  parameters.cp_g./R.*dPdt.*PRef./timeRef ...
-        -  (((1 - parameters.e_bed)./ parameters.e_bed).* parameters.cp_a.*parameters.rho_s.*T.*TRef.*qRef./timeRef.*(dq1dt + dq2dt)) ...
-        +  (((1 - parameters.e_bed)./ parameters.e_bed).* parameters.rho_s.*qRef./timeRef.*(delH1.*dq1dt + delH2.*dq2dt)) ...
-        -  (2.*parameters.h_in./parameters.r_in./parameters.e_bed.*(T.*TRef-Tw.*TRef)));
+    [q1_star, q2_star] = DSL(P.*PRef, y1, T.*TRef, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+end
 end
 
-% Calculates the derivative of wall temperature with respect to time (K/s) (dimensionless)
-if parameters.modelType == "isothermal"
-    dTwdt = 0; % set wall temperature derivative to 0 if isothermal
-else
-    dTwdt = (timeRef./TwRef)./(parameters.rho_w.*parameters.cp_w).*(+2.*parameters.h_in.*parameters.r_in./(parameters.r_out.^2-parameters.r_in.^2).*(T.*TRef-Tw.*TRef) - 2.*parameters.h_out.*parameters.r_out./(parameters.r_out.^2-parameters.r_in.^2).*(Tw.*TRef-TRef)+Qheat);
+function M = buildMassMatrix(y1,q1,q2,T,P,parameters,R,tRef,qRef,TRef,PRef,Ab,coeff_q,cp_a,cp_g)
+P_dim = P .* PRef;
+T_dim = T .* TRef;
+
+% Pre-allocate triplets (row, col, val) — max 14 nonzeros
+ii = zeros(14,1); jj = zeros(14,1); vv = zeros(14,1);
+nz = 0;
+
+RT_PP = R * T_dim / P_dim;  % common factor
+
+% Row 1: Species balance
+nz=nz+1; ii(nz)=1; jj(nz)=1; vv(nz) = 1/tRef;
+nz=nz+1; ii(nz)=1; jj(nz)=2; vv(nz) = RT_PP * coeff_q;
+nz=nz+1; ii(nz)=1; jj(nz)=4; vv(nz) = -y1 / (T * tRef);
+nz=nz+1; ii(nz)=1; jj(nz)=6; vv(nz) =  y1 / (P * tRef);
+
+% Row 2: LDF component 1
+nz=nz+1; ii(nz)=2; jj(nz)=2; vv(nz) = 1;
+
+% Row 3: LDF component 2
+nz=nz+1; ii(nz)=3; jj(nz)=3; vv(nz) = 1;
+
+if ~parameters.isIsothermal
+    % Effective heat capacity [J/m3K]
+    Ceff = Ab * (parameters.rho_s * parameters.cp_s + cp_a * parameters.rho_s * qRef * (q1 + q2));
+
+    % Heat of adsorption [J/mol]
+    if parameters.SSLSTA
+        [delH1, delH2] = computeSSLSTAHeatBinaryBT(P_dim./1e5, y1, T_dim, [parameters.SSLSTA1'; parameters.SSLSTA2']);
+    else
+        [delH1, delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
+    end
+
+    if parameters.isResin
+        delH1 = -parameters.delUb_1;
+        delH2 = -parameters.delUb_2;
+    end
+
+    % Row 4: Energy balance
+    nz=nz+1; ii(nz)=4; jj(nz)=2; vv(nz) = -coeff_q * (delH1 - cp_a * T_dim);
+    nz=nz+1; ii(nz)=4; jj(nz)=3; vv(nz) = -coeff_q * (delH2 - cp_a * T_dim);
+    nz=nz+1; ii(nz)=4; jj(nz)=4; vv(nz) = Ceff * TRef / tRef;
+    nz=nz+1; ii(nz)=4; jj(nz)=6; vv(nz) = cp_g / R * PRef / tRef;
 end
 
-% Calculates the derivative of mole fraction of CO2 with respect to time (1/s) (dimensionless)
-dy1dt = T./P.*(-y1./T.*dPdt + P.*y1./(T.^2).*dTdt - ((1 - parameters.e_bed)./parameters.e_bed * parameters.rho_s * qRef.*R.*TRef./PRef.*(dq1dt)) + ...
-    ((parameters.y1_in.*parameters.F_in./1-y1.*Fout./1)./parameters.V_column./parameters.e_bed).*R*TRef./PRef.*timeRef);
+% Row 5: Wall energy balance
+nz=nz+1; ii(nz)=5; jj(nz)=5; vv(nz) = 1;
 
-% Pack ODEs to output vector
-dXdt(1) = dy1dt;
-dXdt(2) = dq1dt;
-dXdt(3) = dq2dt;
-dXdt(4) = dTdt;
-dXdt(5) = dTwdt;
-dXdt(6) = dPdt;
+% Row 6: Overall material balance
+nz=nz+1; ii(nz)=6; jj(nz)=2; vv(nz) = R * T_dim * coeff_q;
+nz=nz+1; ii(nz)=6; jj(nz)=3; vv(nz) = R * T_dim * coeff_q;
+nz=nz+1; ii(nz)=6; jj(nz)=4; vv(nz) = -P_dim / (T * tRef);
+nz=nz+1; ii(nz)=6; jj(nz)=6; vv(nz) = PRef / tRef;
+
+M = sparse(ii(1:nz), jj(1:nz), vv(1:nz), 6, 6);
+
+% Isothermal simplification
+if parameters.isIsothermal
+    M(1,4) = 0;                        % remove T coupling from y1 equation
+    M(4,:) = sparse([1],[4],[1],1,6);  % identity row: dT/dt = 0
+    M(5,:) = sparse([1],[5],[1],1,6);  % identity row: dTw/dt = 0
+    M(6,4) = 0;                        % remove T coupling from P equation
+end
 end

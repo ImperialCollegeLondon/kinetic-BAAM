@@ -23,10 +23,12 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 addpath(genpath(pwd))
+addpath(genpath('../PVSA_opt-main'))
 
 clear; close all; clc;
 
 addpath(genpath(pwd))
+addpath(genpath('../PVSA_opt-main'))
 
 adsFiles = ["UTSA-16_VB_2019";
     "Mg-MOF-74_VB_2019";
@@ -39,7 +41,7 @@ adsFiles = ["MgMOF74";
     "CALF20"];
 
 
-adsFiles = ["13XW";
+adsFiles = ["13XH";
     "ZNaY";
     "ZHY";
     "ACRB3";
