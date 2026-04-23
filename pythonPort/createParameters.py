@@ -1,27 +1,27 @@
-"""createParameters.py
+"""%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Imperial College London, Multiphase Systems Laboratory
-Year: 2025
-Author: Hassan Azzan (HA)
+Imperial College London, United Kingdom
+Multiphase Systems Laboratory
+Year:     2025
+MATLAB:   R2024a
+Authors:  Hassan Azzan (HA)
 
 Purpose:
-        Create and return a parameters dictionary equivalent to the MATLAB
-        ``createParameters`` function. The returned dict mirrors the MATLAB
-        ``parameters`` struct (adsorbent properties, cycle parameters, models
-        settings) and includes lightweight DSL and LDFCoefficient fallbacks so
-        the translated code can run smoke tests immediately.
+Creates and saves parameters structure for a given adsorbent that can be
+used for design and optimization.
 
-Functions:
-        - create_parameters() -> dict
-        - save_parameters_mat(parameters, folder='AdsorbentFiles') (available when
-            running the module directly) — saves a MATLAB .mat file named by
-            ``parameters['adsorbentName']`` into ``AdsorbentFiles/``.
+Last modified:
+- 2025-10-09, HA: Add properties required for wall energy balance
+- 2025-10-08, HA: Initial creation
 
-Notes:
-        - Units and semantics follow the MATLAB implementation; see the original
-            MATLAB header comments in ``createParameters.m`` for detailed field
-            descriptions.
-"""
+Input arguments:
+
+Output arguments:
+  - parameters: structure containing information described in createParameters.m
+
+Dependencies:
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
 
 from __future__ import annotations
 from typing import Dict, Any
@@ -43,25 +43,26 @@ def create_parameters() -> Dict[str, Any]:
     parameters: Dict[str, Any] = {}
 
     # Adsorbent and bed properties
-    parameters['adsorbentName'] = "Z13X_AW_2022"
-    parameters['qsb_1'] = 3.09
-    parameters['qsd_1'] = 2.54
-    parameters['bo_1'] = 8.65e-7
-    parameters['do_1'] = 2.63e-8
-    parameters['delUb_1'] = -3.66e4
-    parameters['delUd_1'] = -3.57e4
-    parameters['qsb_2'] = 5.84
-    parameters['qsd_2'] = 0.0
-    parameters['bo_2'] = 2.50e-7
-    parameters['do_2'] = 0.0
-    parameters['delUb_2'] = -1.58e4
-    parameters['delUd_2'] = 0.0
+    parameters['adsorbentName'] = "Lewatit"
+    parameters['qsb_1'] = 1.47984782617945
+    parameters['qsd_1'] = 1.56506531359270
+    parameters['bo_1'] = 4.99058095590957e-13
+    parameters['do_1'] = 1.09738690157403e-09
+    parameters['delUb_1'] = -82383.4781975321
+    parameters['delUd_1'] = -48610.5388713494
+    parameters['qsb_2'] = 1.47984782617945
+    parameters['qsd_2'] = 1.56506531359270
+    parameters['bo_2'] = 9.37294291322088e-09
+    parameters['do_2'] = 1.06583531390816e-06
+    parameters['delUb_2'] = -21832.8190363140
+    parameters['delUd_2'] = -8313.07679462474
+    parameters['LDF'] = 0.00031
 
     parameters['cp_g'] = 30.7
     parameters['cp_a'] = parameters['cp_g']
     parameters['cp_w'] = 502.0
     parameters['cp_s'] = 1070.0
-    parameters['rho_s'] = 1130.0
+    parameters['rho_s'] = 663.0
     parameters['rho_w'] = 7800.0
     parameters['rp'] = 1e-3
     parameters['V_column'] = 0.066
@@ -73,11 +74,9 @@ def create_parameters() -> Dict[str, Any]:
     parameters['Dm'] = 1.6e-5
     parameters['tau'] = 3.0
 
-    # Column geometry and wall properties (defaults added to match ODE use)
-    parameters['r_in'] = 0.02
-    parameters['r_out'] = 0.03
-    parameters['L'] = 1.0
-    parameters['Theat'] = 0
+    # Column geometry scaling used to compute r_in and L in outputs
+    parameters['Lbyr'] = 7.0
+    parameters['Theat'] = 0.0
 
     # Cycle properties
     parameters['v_in'] = 0.5
@@ -94,6 +93,21 @@ def create_parameters() -> Dict[str, Any]:
     parameters['pressType'] = "FP"
     parameters['processType'] = "PVSA"
     parameters['lambda'] = 0.5
+    parameters['pressureDrop'] = True
+    parameters['equilibrium'] = False
+    parameters['cCSTR'] = False
+    parameters['testBT'] = False
+    parameters['testEvac'] = False
+    parameters['normPlot'] = False
+    parameters['amine'] = False
+    parameters['forwardEvac'] = False
+    parameters['SSLSTA'] = False
+    parameters['plot0D'] = True
+    parameters['rigid'] = True
+    parameters['ResinSens'] = False
+    parameters['LDFtest'] = False
+    parameters['LDFFactor'] = 1.0
+    parameters['fixResins'] = False
 
     # Model properties
     parameters['modelType'] = "nonisothermal"
@@ -111,13 +125,13 @@ def create_parameters() -> Dict[str, Any]:
     # These default functions accept scalar or numpy-array t and return a
     # scalar or array respectively.
     parameters['P_ads'] = lambda tt: (np.asarray(parameters['p_H']) if np.asarray(tt).shape == () else np.full(np.shape(np.asarray(tt)), parameters['p_H']))
-    parameters['P_blo'] = lambda tt: (parameters['p_I'] + (parameters['p_H'] - parameters['p_I']) * np.exp(-parameters['lambda'] * np.asarray(tt)))
-    parameters['P_evac'] = lambda tt: (parameters['p_L'] + (parameters.get('P_initL', parameters['p_I']) - parameters['p_L']) * np.exp(-parameters['lambda'] * np.asarray(tt)))
-    parameters['P_press'] = lambda tt: (parameters['p_H'] + (parameters.get('P_initR', parameters['p_H']) - parameters['p_H']) * np.exp(-3 * np.asarray(tt)))
+    parameters['P_blo'] = lambda tt: (parameters['p_I'] + (parameters.get('P_initH', parameters['p_H']) - parameters['p_I']) * np.exp(-parameters['lambda'] * np.asarray(tt)))
+    parameters['P_evac'] = lambda tt: (parameters['p_L'] + (parameters['p_I'] - parameters['p_L']) * np.exp(-parameters['lambda'] * np.asarray(tt)))
+    parameters['P_press'] = lambda tt: (parameters.get('P_initH', parameters['p_H']) + (parameters.get('P_initR', parameters['p_H']) - parameters.get('P_initH', parameters['p_H'])) * np.exp(-parameters['lambda'] * np.asarray(tt)))
 
-    parameters['dPdt_blo'] = lambda tt: -parameters['lambda'] * (parameters['p_H'] - parameters['p_I']) * np.exp(-parameters['lambda'] * np.asarray(tt))
-    parameters['dPdt_evac'] = lambda tt: -parameters['lambda'] * (parameters['p_I'] - parameters['p_L']) * np.exp(-parameters['lambda'] * np.asarray(tt))
-    parameters['dPdt_press'] = lambda tt: -3.0 * (parameters.get('P_initR', parameters['p_H']) - parameters['p_H']) * np.exp(-3 * np.asarray(tt))
+    parameters['dPdt_blo'] = lambda tt: -parameters['lambda'] * (parameters.get('P_initH', parameters['p_H']) - parameters['p_I']) * np.exp(-parameters['lambda'] * np.asarray(tt))
+    parameters['dPdt_evac'] = lambda tt: -parameters['lambda'] * (parameters.get('P_initL', parameters['p_I']) - parameters['p_L']) * np.exp(-parameters['lambda'] * np.asarray(tt))
+    parameters['dPdt_press'] = lambda tt: -parameters['lambda'] * (parameters.get('P_initR', parameters['p_H']) - parameters.get('P_initH', parameters['p_H'])) * np.exp(-parameters['lambda'] * np.asarray(tt))
 
     # Attach DSL and LDFCoefficient implementations from local modules so
     # the returned parameters dict is immediately usable. If you prefer to

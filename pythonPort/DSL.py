@@ -1,21 +1,30 @@
-"""DSL.py
+"""%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Imperial College London, Multiphase Systems Laboratory
-Year: 2025
-Author: Hassan Azzan (HA)
+Imperial College London, United Kingdom
+Multiphase Systems Laboratory
+Year:     2025
+MATLAB:   R2024a
+Authors:  Hassan Azzan (HA), Ayca Yilmaz (AY)
 
 Purpose:
-    Port of MATLAB `DSL.m` — implements the competitive DSL adsorption
-    isotherm used by the k-BAAM model.
+Function that takes pressure, mole fraction of component 1, temperature,
+and isotherm parameters. Outputs corresponding equilibrium adsorbed
+amounts for both components.
 
-Function:
-    DSL(P, y1, T, qsb_1, qsd_1, qsb_2, qsd_2, bo_1, do_1, bo_2, do_2,
-        delUb_1, delUd_1, delUb_2, delUd_2) -> (q1_star, q2_star)
+Last modified:
+- 2025-09-17, HA: Initial creation
 
-Notes:
-    - P expected in Pa, T in K. Function is vectorized via numpy where
-      possible.
-"""
+Input arguments:
+    - P: pressure [Pa]
+    - y1: mole fraction of component 1 [-]
+    - T: temperature [K]
+    - DSL isotherm parameters
+
+Output arguments:
+    - q1_star: equilibrium adsorbed amount for component 1 [mol/kg]
+    - q2_star: equilibrium adsorbed amount for component 2 [mol/kg]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
 from __future__ import annotations
 import numpy as np
 

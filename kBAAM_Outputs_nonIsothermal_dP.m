@@ -661,8 +661,9 @@ if parameters.outputType == "plot"
     figure(1);
     subplot(4,2,2)
     hold on; xlabel('time [s]'); hold on;
-    if parameters.plot0D;
+    if parameters.plot0D
         plot(t_cycle./t0, P_cycle./1e5,'-', 'Color','#0B0','LineWidth', 2, 'DisplayName','0-D','LineStyle',linestyleVal);% ylabel('P [bar]'); xlabel('time [s]'); hold on;%check unit
+        plot(t_cycle./t0, P_cycle2./1e5,'--', 'Color','#0B0','LineWidth', 2, 'DisplayName','0-D','LineStyle','--');% ylabel('P [bar]'); xlabel('time [s]'); hold on;%check unit
     end
     title('Mean Column Pressure [bar]')
     xline(t_ads_end./t0,  'k--', 'LineWidth', 0.8,'HandleVisibility','off');

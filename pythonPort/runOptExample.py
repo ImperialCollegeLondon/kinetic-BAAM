@@ -17,22 +17,33 @@ from auxillaryFunctionskBAAM import load_parameters_mat
 from run_NSGA import run_nsga
 
 # load (basename without .mat is OK)
-p = load_parameters_mat('Z13X_AW_2022')
+p = load_parameters_mat('13XH.mat')
 parameters = p["parameters"]
 
-parameters["rp"] = 1e-3;
-parameters["p_L"]= 0.02e5;
-parameters["V_column"] = 0.0661;
-parameters["outputType"] = "opt";
-parameters["pressType"] = "FP";
+parameters["rp"] = 1e-3
+parameters["outputType"] = "opt"
+parameters["plot0D"] = 0
+parameters["plotVideo"] = 0
+parameters["layered"] = 0
+parameters["Lbyr"] = 7
+parameters["pressureDrop"] = 1
+parameters["equilibrium"] = 0
+parameters["cCSTR"] = 0
+parameters["testBT"] = 0
+parameters["testEvac"] = 0
+parameters["normPlot"] = 0
+parameters["rigid"] = 1
+parameters["modelType"] = "nonisothermal"
+parameters["p_L"] = 0.02e5
+parameters["V_column"] = 0.0661
+parameters["pressType"] = "FP"
 
 
 ###################################
 
-parameters["adsorbentName"] = "Z13X";
-parameters["modelType"] = "nonisothermal";
-parameters["OptType"] = "Const";
-parameters["processType"] = "PVSA";
+parameters["adsorbentName"] = "13XH"
+parameters["OptType"] = "Const"
+parameters["processType"] = "PVSA"
 # Request 10 cores for parallel evaluation (optional)
 parameters['n_cores'] = 8
 

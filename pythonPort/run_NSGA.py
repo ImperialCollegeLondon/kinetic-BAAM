@@ -1,32 +1,29 @@
-"""run_NSGA.py
+"""%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Imperial College London, Multiphase Systems Laboratory
-Year: 2025
-Author: Hassan Azzan (HA)
+Imperial College London, United Kingdom
+Multiphase Systems Laboratory
+Year:     2025
+MATLAB:   R2024a
+Authors:  Hassan Azzan (HA)
 
 Purpose:
-    Python port of the MATLAB `run_NSGA.m` driver. Provides
-    ``run_nsga(parameters, ngens=90, pop_size=200, use_pymoo=True)`` which
-    attempts to run NSGA-II (via `pymoo`) and falls back to a randomized
-    sampling search if `pymoo` is unavailable.
+Function that takes parameters as inputs and carries out multiobjective
+process optimization for the system defined in parameters.
 
-Inputs / behaviour:
-    - parameters: dict-like parameters structure (see `createParameters.py`)
-    - ngens: number of generations (for pymoo) or used to size samples
-    - pop_size: population size (pymoo) or sample density (fallback)
-    - use_pymoo: attempt to use the pymoo library when True
+Last modified:
+- 2025-10-08, HA: Add reverse engineering method
+- 2025-09-21, HA: Initial creation
 
-Outputs:
-    Returns ``(X_pareto, F_pareto)`` arrays containing decision variables
-    and objective values for the discovered Pareto front.
+Input arguments:
+    - parameters: contains adsorbent properties and process parameters
 
-Notes:
-    - Decision-variable encoding and bounds mirror the MATLAB implementation
-      so that ``kbaam_outputs_nonisothermal(..., outputType='opt')`` can be
-      reused unchanged.
-    - Linear inequality constraints A and b are applied if present for the
-      selected processType.
-"""
+Output arguments:
+    - x, fval equivalents in the Python return value (X_pareto, F_pareto)
+
+Dependencies:
+    - kBAAM_Outputs_nonIsothermal.m
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
 
 from __future__ import annotations
 import numpy as np
@@ -80,14 +77,18 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
     # Build lb/ub exactly as in the MATLAB script (these are in the same
     # encoding expected by the outputs code when parameters['outputType']=='opt')
     if pt == 'PVSA':
-        lb = np.array([0.1, np.log10(0.021e5), 5, 5, 5, np.log10(1e5)])
-        ub = np.array([2.0, np.log10(5e5), 200, 200, 200, np.log10(10e5)])
-        A = np.array([[0, 1, 0, 0, 0, -1]])
-        b = np.array([0.0])
+        lb = np.array([0.3 * 0.37, 0.13e5, 40.0, 30.0, 30.0, 1e5])
+        ub = np.array([3.0 * 0.37, 5e5, 300.0, 300.0, 300.0, 10e5])
+        A = np.array([[0, -1, 0, 0, 0, 0], [0, 1, 0, 0, 0, -1]], dtype=float)
+        b = np.array([0.0, 0.0])
     elif pt == 'VSA':
-        lb = np.array([0.1, np.log10(0.02e5), 5, 5, 5])
-        ub = np.array([2.0, np.log10(0.90e5), 200, 200, 200])
-        A = np.zeros((1, len(lb)))
+        if parameters.get('amine', False):
+            lb = np.array([0.3 * 0.37, 0.021e5, 100.0, 20.0, 30.0, 0.02e5])
+            ub = np.array([3.0 * 0.37, 0.9e5, 3e4, 1200.0, 3.5e4, 0.5e5])
+        else:
+            lb = np.array([0.3 * 0.37, 0.021e5, 30.0, 30.0, 30.0, 0.02e5])
+            ub = np.array([3.0 * 0.37, 0.9e5, 200.0, 300.0, 300.0, 0.5e5])
+        A = np.array([[0, -1, 0, 0, 0, 1]], dtype=float)
         b = np.array([0.0])
     elif pt == 'AdsorbentVSA':
         lb = np.array([np.log10(0.02e5), 100, 40, 0.5, 1e-6, 10e3, 10e3])
@@ -109,6 +110,11 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
         ub = np.array([np.log10(10e5), 3000, 300, 8, 1e-3, 1e-3, 45e3, np.log10(10e5)])
         A = np.array([[1, 0, 0, 0, -1, 1, 0, -1]])
         b = np.array([0.0])
+    elif pt == 'Resin':
+        lb = np.array([np.log10(0.021e5), 1000.0, 20.0, 500.0, np.log10(0.05e5), 0.005])
+        ub = np.array([np.log10(0.975e5), 30000.0, 1000.0, 45000.0, np.log10(0.2e5), 1.0])
+        A = np.array([[-1, 0, 0, 0, 1, 0]], dtype=float)
+        b = np.array([0.0])
     else:
         raise ValueError(f"Unsupported processType: {pt}")
 
@@ -118,9 +124,10 @@ def run_nsga(parameters: Dict[str, Any], ngens: int = 90, pop_size: int = 10, us
 
     # filename for saving
     timestamp = datetime.now().strftime('%d%m%y%H%M')
-    fname = f"{parameters.get('adsorbentName','ads')}_{pt}_{parameters.get('OptType','Unc')}_{parameters.get('modelType','model')}_{timestamp}"
+    fname = f"{parameters.get('adsorbentName','ads')}_{pt}_{parameters.get('pressType','FP')}_{parameters.get('OptType','Unc')}_{parameters.get('modelType','model')}_{timestamp}"
     parameters['fileName'] = fname
     parameters['outputType'] = 'opt'
+    parameters['xRef'] = np.ones_like(ub, dtype=float)
 
     # Resolve n_cores from explicit argument or parameters dict
     if n_cores is None:

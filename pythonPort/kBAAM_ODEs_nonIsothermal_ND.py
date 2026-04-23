@@ -1,46 +1,68 @@
-"""kBAAM_ODEs_nonIsothermal_ND.py
+"""%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-Imperial College London, Multiphase Systems Laboratory
-Year: 2025
-Author: Hassan Azzan (HA)
+Imperial College London, United Kingdom
+Multiphase Systems Laboratory
+Year:     2025
+MATLAB:   R2024a
+Authors:  Hassan Azzan (HA), Ayca Yilmaz (AY)
 
 Purpose:
-    Python translation of the MATLAB `kBAAM_ODEs_nonIsothermal_ND.m` which
-    implements the right-hand side for the non-dimensional k-BAAM ODEs.
+Evaluates the RHS of the dimensionless ODEs for the non-isothermal k-BAAM with pressure
+drop. Takes dimensionless time t, state vector X, parameters struct, cycle step name,
+and returns dXdt. Handles four PSA steps (ads, blo, evac, pres) via a switch-style
+branch. Supports both isothermal and non-isothermal models.
 
-Function signature:
-    def kbaam_odes_nonisothermal_nd(t, X, parameters, step_name)
+The DAE system is written in semi-explicit mass-matrix form M*dX/dt = f. The function
+solves this directly by computing M^-1 f at each call for the 6-state system.
 
-Inputs:
-    - t: dimensionless time (float)
-    - X: iterable with 5 state variables [y1, q1, q2, T, Tw]
-    - parameters: dict-like or object-like container matching the MATLAB
-      `parameters` struct. Callables (e.g. pressure schedules) should be
-      provided as callables in this container. The functions `DSL` and
-      `LDFCoefficient` should be present in `parameters` or available as
-      local module implementations.
-    - step_name: one of 'ads', 'blo', 'evac', 'pres'
+State vector X (all dimensionless):
+    X(1) = y1       mole fraction of component 1 (CO2) [-]
+    X(2) = q1/qRef  adsorbed amount of component 1     [-]
+    X(3) = q2/qRef  adsorbed amount of component 2     [-]
+    X(4) = T/TRef   gas and solid temperature          [-]
+    X(5) = Tw/TwRef wall temperature                   [-]
+    X(6) = P/PRef   total pressure                     [-]
 
-Returns:
-    - dXdt: numpy array of shape (5,) with time derivatives
+Equilibrium model: DSL (default) or SSLSTA (parameters.SSLSTA = 1)
+Kinetics: Linear Driving Force (LDF) via LDFCoefficient.m
+Flow: Darcy's law with linear pressure profile along bed length
+Pressure drop: Ergun-based Darcy permeability precomputed in Outputs
 
-Notes:
-    - Mirrors MATLAB behavior including non-dimensionalisation, time
-      references, and handling of F_in/v_in fallbacks to avoid division by
-      zero.
-"""
+Last modified:
+- 2026-04-23, HA: Add section headers, inline comments, precomputed constants,
+                                    state clamping, dimensional caching, fewer LDF calls in ads step,
+                                    remove buildMassMatrix / mode-switching infrastructure
+- 2025-10-09, HA: Add wall energy balance
+- 2025-09-21, HA: Initial creation
+
+Input arguments:
+    - t: dimensionless time [-]
+    - X: 6x1 vector of dimensionless state variables
+    - parameters: struct of adsorbent properties and process parameters
+    - stepName: current cycle step ('ads', 'blo', 'evac', 'pres')
+
+Output arguments:
+    - dXdt: 6x1 vector of time derivatives
+
+Dependencies:
+    - DSL.m
+    - SSLSTA.m
+    - LDFCoefficient.m
+    - computeDSLHeatUnary.m
+    - computeSSLSTAHeatBinaryBT.m
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
 
 from __future__ import annotations
+
 import numpy as np
 
-# Try to import local implementations as sensible defaults/fallbacks
+
 try:
-    # package-style import (when running as package)
     from .DSL import DSL as _DSL_impl
     from .LDFCoefficient import LDFCoefficient as _LDF_impl
 except Exception:
     try:
-        # top-level import for direct script usage
         from DSL import DSL as _DSL_impl
         from LDFCoefficient import LDFCoefficient as _LDF_impl
     except Exception:
@@ -49,217 +71,246 @@ except Exception:
 
 
 def _get(p, key, default=None):
-    """Helper to get a value from a dict-like or object-like parameters."""
-    if p is None:
-        return default
     if isinstance(p, dict):
         return p.get(key, default)
     return getattr(p, key, default)
 
 
-def kbaam_odes_nonisothermal_nd(t, X, parameters, step_name: str):
-    """Compute ODEs for the (non-)isothermal kBAAM model (dimensionless).
+def _set(p, key, value):
+    if isinstance(p, dict):
+        p[key] = value
+    else:
+        setattr(p, key, value)
 
-    The function mirrors the MATLAB implementation and expects the caller to
-    provide `DSL` and `LDFCoefficient` implementations via the `parameters`
-    container.
-    """
-    R = 8.314
 
-    # ensure X is array-like
-    X = np.asarray(X, dtype=float)
-    if X.size < 5:
-        raise ValueError("X must contain at least 5 state variables: [y1,q1,q2,T,Tw]")
+def _dsl_heats(parameters, y1, t_nd, p_nd):
+    """Analytical DSL heat expression consistent with MATLAB path for DSL mode."""
+    r = 8.3145
+    tref = _get(parameters, 'TRef')
+    pref = _get(parameters, 'PRef')
+    tdim = t_nd * tref
+    c1 = y1 * p_nd * pref / (r * tdim)
+    c2 = (1.0 - y1) * p_nd * pref / (r * tdim)
 
-    y1 = X[0]
-    q1 = X[1]
-    q2 = X[2]
-    T = X[3]
-    Tw = X[4]
+    b1 = _get(parameters, 'bo_1') * np.exp(-_get(parameters, 'delUb_1') / (r * tdim))
+    d1 = _get(parameters, 'do_1') * np.exp(-_get(parameters, 'delUd_1') / (r * tdim))
+    b2 = _get(parameters, 'bo_2') * np.exp(-_get(parameters, 'delUb_2') / (r * tdim))
+    d2 = _get(parameters, 'do_2') * np.exp(-_get(parameters, 'delUd_2') / (r * tdim))
 
-    # parameters accessor
-    p = parameters
+    num1 = -(
+        _get(parameters, 'qsb_1') * b1 * _get(parameters, 'delUb_1') / (1.0 + b1 * c1) ** 2
+        + _get(parameters, 'qsd_1') * d1 * _get(parameters, 'delUd_1') / (1.0 + d1 * c1) ** 2
+    )
+    den1 = (
+        _get(parameters, 'qsb_1') * b1 / (1.0 + b1 * c1) ** 2
+        + _get(parameters, 'qsd_1') * d1 / (1.0 + d1 * c1) ** 2
+    )
+    num2 = -(
+        _get(parameters, 'qsb_2') * b2 * _get(parameters, 'delUb_2') / (1.0 + b2 * c2) ** 2
+        + _get(parameters, 'qsd_2') * d2 * _get(parameters, 'delUd_2') / (1.0 + d2 * c2) ** 2
+    )
+    den2 = (
+        _get(parameters, 'qsb_2') * b2 / (1.0 + b2 * c2) ** 2
+        + _get(parameters, 'qsd_2') * d2 / (1.0 + d2 * c2) ** 2
+    )
 
-    # Reference values for non-dimensionalization
-    V_column = _get(p, 'V_column')
-    if V_column is None:
-        raise KeyError('parameters must provide V_column')
+    del_h1 = num1 / den1
+    del_h2 = num2 / den2
+    return del_h1, del_h2
 
-    # Use provided F_in when available and non-zero; otherwise reconstruct a
-    # volumetric flow from v_in and the inner area (r_in) and compute F_in
-    # from ideal gas law. This prevents division-by-zero if parameters.F_in
-    # has been mutated to zero in-between steps.
-    F_in = _get(p, 'F_in')
 
-    volFluxRef = F_in / V_column
-    timeRef = _get(p, 'p_H') / (R * _get(p, 'T_feed') * volFluxRef)
-    qRef = _get(p, 'qsb_1') + _get(p, 'qsd_1')
-    TRef = _get(p, 'T_feed')
-    TwRef = TRef
-    PRef = _get(p, 'p_H')
+def _equilibrium_loadings(parameters, p_nd, y1, t_nd):
+    dsl = _get(parameters, 'DSL') or _DSL_impl
+    if dsl is None:
+        raise KeyError('DSL implementation is required in parameters or imports.')
+    pref = _get(parameters, 'PRef')
+    tref = _get(parameters, 'TRef')
+    return dsl(
+        p_nd * pref,
+        y1,
+        t_nd * tref,
+        _get(parameters, 'qsb_1'),
+        _get(parameters, 'qsd_1'),
+        _get(parameters, 'qsb_2'),
+        _get(parameters, 'qsd_2'),
+        _get(parameters, 'bo_1'),
+        _get(parameters, 'do_1'),
+        _get(parameters, 'bo_2'),
+        _get(parameters, 'do_2'),
+        _get(parameters, 'delUb_1'),
+        _get(parameters, 'delUd_1'),
+        _get(parameters, 'delUb_2'),
+        _get(parameters, 'delUd_2'),
+    )
 
-    Qheat = 0.0
 
-    # Prepare outputs
-    dq1dt = 0.0
-    dq2dt = 0.0
-    dPdt = 0.0
-    Fout = 0.0
+def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
+    """Evaluate dX/dt by solving M\f for MATLAB-equivalent pressure-drop system."""
+    x = np.asarray(x, dtype=float)
+    if x.size < 6:
+        raise ValueError('State must be length 6: [y1,q1,q2,T,Tw,P].')
 
-    # helpers (expect callables provided)
-    DSL = _get(p, 'DSL')
-    LDFCoefficient = _get(p, 'LDFCoefficient')
+    y1 = np.clip(x[0], 0.0, 1.0)
+    q1 = x[1]
+    q2 = x[2]
+    t_nd = max(x[3], 1e-9)
+    tw_nd = x[4]
+    p_nd = max(x[5], 1e-9)
 
-    # If not provided through parameters, fall back to local module implementations
-    if DSL is None:
-        DSL = _DSL_impl
-    if LDFCoefficient is None:
-        LDFCoefficient = _LDF_impl
+    r = 8.3145
 
-    # switch-case behavior
+    tref = _get(parameters, 'timeRef')
+    qref = _get(parameters, 'qRef')
+    t_ref = _get(parameters, 'TRef')
+    tw_ref = _get(parameters, 'TwRef')
+    p_ref = _get(parameters, 'PRef')
+    ab = _get(parameters, 'Ab')
+    coeff_q = _get(parameters, 'Ab_rhos_qRef_tRef')
+    cp_a = _get(parameters, 'cp_a')
+    cp_g = _get(parameters, 'cp_g')
+    ebed = _get(parameters, 'e_bed')
+    vcol = _get(parameters, 'V_column')
+    col_l = _get(parameters, 'L')
+    area = _get(parameters, 'A_in')
+    t_ref_qref = _get(parameters, 'tRef_qRef')
+    darcy_k = _get(parameters, 'darcyK')
+    cpg_e_v = _get(parameters, 'cpg_eV')
+    two_hin = _get(parameters, 'two_hin_rin_e')
+
+    p_dim = p_nd * p_ref
+    t_dim = t_nd * t_ref
+
+    qheat = 0.0
+
+    ldf = _get(parameters, 'LDFCoefficient') or _LDF_impl
+    if ldf is None:
+        raise KeyError('LDFCoefficient implementation is required in parameters or imports.')
+
     if step_name == 'ads':
-        P = _get(p, 'P_ads')(t * timeRef) / PRef
+        p_out = _get(parameters, 'P_ads')(t * tref) / p_ref
 
+        if _get(parameters, 'cCSTR', False):
+            q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+            k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
+            dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
+            dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+        else:
+            q1_in, q2_in = _equilibrium_loadings(parameters, p_nd, _get(parameters, 'y1_in'), t_nd)
+            q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+            k1_in, _ = ldf(p_dim, y1, t_dim, q1_in, q2_in, parameters)
+            _, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
+            dq1dt = t_ref_qref * k1_in * (q1_in - q1 * qref)
+            dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
 
-        q1_star, q2_star = DSL(P * PRef, _get(p, 'y1_in'), TRef,
-                              _get(p, 'qsb_1'), _get(p, 'qsd_1'), _get(p, 'qsb_2'), _get(p, 'qsd_2'),
-                              _get(p, 'bo_1'), _get(p, 'do_1'), _get(p, 'bo_2'), _get(p, 'do_2'),
-                              _get(p, 'delUb_1'), _get(p, 'delUd_1'), _get(p, 'delUb_2'), _get(p, 'delUd_2'))
-
-        k1, k2 = LDFCoefficient(P * PRef, y1, T * TRef, q1_star, q2_star, p)
-
-        dq1dt = timeRef / qRef * k1 * (q1_star - q1 * qRef)
-        dq2dt = timeRef / qRef * k2 * (q2_star - q2 * qRef)
-        dPdt = 0.0
-        F_in = _get(p, 'F_in'); 
-        Fout = F_in - (1 - _get(p, 'e_bed')) * _get(p, 'V_column') * _get(p, 'rho_s') * (dq1dt + dq2dt) / (timeRef / qRef)
+        f_in = _get(parameters, 'volFlowin') * (2.0 * p_nd - p_out) * p_ref / (r * np.mean([t_ref, t_dim]))
+        y1_in = _get(parameters, 'y1_in')
+        v_out = (2.0 / col_l) * darcy_k * (p_nd - p_out) * p_ref
+        f_out = p_out * p_ref * area * ebed / (r * t_nd * t_ref) * v_out
 
     elif step_name == 'blo':
-        P = _get(p, 'P_blo')(t * timeRef) / PRef
-
-
-        q1_star, q2_star = DSL(P * PRef, y1, T * TRef,
-                              _get(p, 'qsb_1'), _get(p, 'qsd_1'), _get(p, 'qsb_2'), _get(p, 'qsd_2'),
-                              _get(p, 'bo_1'), _get(p, 'do_1'), _get(p, 'bo_2'), _get(p, 'do_2'),
-                              _get(p, 'delUb_1'), _get(p, 'delUd_1'), _get(p, 'delUb_2'), _get(p, 'delUd_2'))
-
-        k1, k2 = LDFCoefficient(P * PRef, y1, T * TRef, q1_star, q2_star, p)
-
-        dq1dt = timeRef / qRef * k1 * (q1_star - q1 * qRef)
-        dq2dt = timeRef / qRef * k2 * (q2_star - q2 * qRef)
-        dPdt = _get(p, 'dPdt_blo')(t * timeRef) / (PRef / timeRef)
-
-        F_in = 0;
-
-        Fout = -(1 - _get(p, 'e_bed')) * _get(p, 'V_column') * _get(p, 'rho_s') * (dq1dt + dq2dt) / (timeRef / qRef) - (_get(p, 'e_bed') / (R * T * TRef)) * dPdt * (_get(p, 'p_H') / timeRef) * _get(p, 'V_column')
+        p_out = _get(parameters, 'P_blo')(t * tref) / p_ref
+        q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+        k1, k2 = ldf(
+            p_dim,
+            _get(parameters, 'y1init', y1),
+            t_dim,
+            _get(parameters, 'q1init', q1_star),
+            _get(parameters, 'q2init', q2_star),
+            parameters,
+        )
+        dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
+        dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+        f_in = 0.0
+        y1_in = 0.0
+        v_out = (2.0 / col_l) * darcy_k * (p_nd - p_out) * p_ref
+        f_out = p_dim * area * ebed / (r * t_dim) * v_out
 
     elif step_name == 'evac':
-        P = _get(p, 'P_evac')(t * timeRef) / PRef
-
-        q1_star, q2_star = DSL(P * PRef, y1, T * TRef,
-                              _get(p, 'qsb_1'), _get(p, 'qsd_1'), _get(p, 'qsb_2'), _get(p, 'qsd_2'),
-                              _get(p, 'bo_1'), _get(p, 'do_1'), _get(p, 'bo_2'), _get(p, 'do_2'),
-                              _get(p, 'delUb_1'), _get(p, 'delUd_1'), _get(p, 'delUb_2'), _get(p, 'delUd_2'))
-
-        k1, k2 = LDFCoefficient(P * PRef, y1, T * TRef, q1_star, q2_star, p)
-
-        dq1dt = timeRef / qRef * k1 * (q1_star - q1 * qRef)
-        dq2dt = timeRef / qRef * k2 * (q2_star - q2 * qRef)
-        dPdt = _get(p, 'dPdt_evac')(t * timeRef) / (_get(p, 'p_H') / timeRef)
-
-        if _get(p, 'heating'):
-            L = _get(p, 'L', _get(p, 'length', 1.0))
-            Qheat = 60.0 * (_get(p, 'r_out')) * np.pi * 2.0 * L * (T * TRef - _get(p, 'Theat'))
-
-        F_in = 0;            
-        Fout = -(1 - _get(p, 'e_bed')) * _get(p, 'V_column') * _get(p, 'rho_s') * (dq1dt + dq2dt) / (timeRef / qRef) - (_get(p, 'e_bed') / (R * T * TRef)) * dPdt * (_get(p, 'p_H') / timeRef) * _get(p, 'V_column')
+        p_out = _get(parameters, 'P_evac')(t * tref) / p_ref
+        q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+        k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
+        dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
+        dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+        if _get(parameters, 'heating', False) and t_dim < _get(parameters, 'Theat', 0.0):
+            qheat = (
+                _get(parameters, 'heatPowerDensity', 0.0)
+                * (_get(parameters, 'Theat', 0.0) - t_dim)
+                / max(_get(parameters, 'Theat', 1.0) - t_ref, 1e-12)
+                / max(_get(parameters, 'r_out') - _get(parameters, 'r_in'), 1e-12)
+            )
+        f_in = 0.0
+        y1_in = 0.0
+        v_out = (2.0 / col_l) * darcy_k * (p_nd - p_out) * p_ref
+        f_out = p_dim * area * ebed / (r * t_dim) * v_out
 
     elif step_name == 'pres':
-        P = _get(p, 'P_press')(t * timeRef) / PRef
-
-
-        q1_star, q2_star = DSL(P * PRef, y1, T * TRef,
-                              _get(p, 'qsb_1'), _get(p, 'qsd_1'), _get(p, 'qsb_2'), _get(p, 'qsd_2'),
-                              _get(p, 'bo_1'), _get(p, 'do_1'), _get(p, 'bo_2'), _get(p, 'do_2'),
-                              _get(p, 'delUb_1'), _get(p, 'delUd_1'), _get(p, 'delUb_2'), _get(p, 'delUd_2'))
-
-        k1, k2 = LDFCoefficient(P * PRef, y1, T * TRef, q1_star, q2_star, p)
-
-        dq1dt = timeRef / qRef * k1 * (q1_star - q1 * qRef)
-        dq2dt = timeRef / qRef * k2 * (q2_star - q2 * qRef)
-        dPdt = _get(p, 'dPdt_press')(t * timeRef) / (PRef / timeRef)
-
-        # set F_in according to MATLAB
-        F_in_val = (1 - _get(p, 'e_bed')) * _get(p, 'V_column') * _get(p, 'rho_s') * (dq1dt + dq2dt) / (timeRef / qRef) + (_get(p, 'e_bed') / (R * T * TRef)) * dPdt * (_get(p, 'p_H') / timeRef) * _get(p, 'V_column')
-
-        F_in = F_in_val     
-        Fout = 0.0
-
-        if _get(p, 'pressType') == 'LPP':
-            if isinstance(p, dict):
-                p['y1_in'] = _get(p, 'y1_LPP')
-            else:
-                try:
-                    setattr(p, 'y1_in', _get(p, 'y1_LPP'))
-                except Exception:
-                    pass
-
+        p_out = _get(parameters, 'P_press')(t * tref) / p_ref
+        q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+        k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
+        dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
+        dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+        v_in = (2.0 / col_l) * darcy_k * (p_out - p_nd) * p_ref
+        f_in = p_out * p_ref * area * ebed / (r * t_ref) * v_in
+        f_out = 0.0
+        if _get(parameters, 'pressType') == 'LPP':
+            y1_in = _get(parameters, 'y1_LPP', _get(parameters, 'y1_in'))
+        else:
+            y1_in = _get(parameters, 'y1_in')
     else:
         raise ValueError(f'Unknown step_name: {step_name}')
 
-    # Analytical computation of heat of adsorption as a function of P and T
-    b1 = _get(p, 'bo_1') * np.exp(-_get(p, 'delUb_1') / (R * T * TRef))
-    d1 = _get(p, 'do_1') * np.exp(-_get(p, 'delUd_1') / (R * T * TRef))
-    b2 = _get(p, 'bo_2') * np.exp(-_get(p, 'delUb_2') / (R * T * TRef))
-    d2 = _get(p, 'do_2') * np.exp(-_get(p, 'delUd_2') / (R * T * TRef))
+    f = np.zeros(6, dtype=float)
+    f[0] = r * t_dim / p_dim * (y1_in * f_in - y1 * f_out) / (ebed * vcol)
+    f[1] = dq1dt
+    f[2] = dq2dt
 
-    c1 = y1 * P * PRef / (R * T * TRef)
-    c2 = (1 - y1) * P * PRef / (R * T * TRef)
-
-    delH1 = -(
-        _get(p, 'qsb_1') * b1 * _get(p, 'delUb_1') / (1 + b1 * c1) ** 2
-        + _get(p, 'qsd_1') * d1 * _get(p, 'delUd_1') / (1 + d1 * c1) ** 2
-    ) / (
-        _get(p, 'qsb_1') * b1 / (1 + b1 * c1) ** 2 + _get(p, 'qsd_1') * d1 / (1 + d1 * c1) ** 2
-    )
-
-    delH2 = -(
-        _get(p, 'qsb_2') * b2 * _get(p, 'delUb_2') / (1 + b2 * c2) ** 2
-        + _get(p, 'qsd_2') * d2 * _get(p, 'delUd_2') / (1 + d2 * c2) ** 2
-    ) / (
-        _get(p, 'qsb_2') * b2 / (1 + b2 * c2) ** 2 + _get(p, 'qsd_2') * d2 / (1 + d2 * c2) ** 2
-    )
-
-    # Temperature derivatives
-    if _get(p, 'modelType') == 'isothermal':
-        dTdt = 0.0
-        dTwdt = 0.0
-    else:
-        coefft1 = (timeRef / TRef) / (((1 - _get(p, 'e_bed')) / _get(p, 'e_bed')) * (_get(p, 'rho_s') * _get(p, 'cp_s') + _get(p, 'cp_a') * _get(p, 'rho_s') * qRef * (q1 + q2)))
-
-        dTdt = coefft1 * (
-            + (F_in / _get(p, 'V_column') * _get(p, 'cp_g') * (TRef - TRef * T))
-            - _get(p, 'cp_g') / R * dPdt * PRef / timeRef
-            - (((1 - _get(p, 'e_bed')) / _get(p, 'e_bed')) * _get(p, 'cp_a') * _get(p, 'rho_s') * T * TRef * qRef / timeRef * (dq1dt + dq2dt))
-            + (((1 - _get(p, 'e_bed')) / _get(p, 'e_bed')) * _get(p, 'rho_s') * qRef / timeRef * (delH1 * dq1dt + delH2 * dq2dt))
-            - (2 * _get(p, 'h_in') / _get(p, 'r_in') / _get(p, 'e_bed') * (T * TRef - Tw * TRef) + Qheat)
+    is_isothermal = _get(parameters, 'isIsothermal', _get(parameters, 'modelType') == 'isothermal')
+    if not is_isothermal:
+        f[3] = cpg_e_v * (f_in * t_ref - f_out * t_dim) - two_hin * (t_dim - tw_nd * tw_ref)
+        f[4] = _get(parameters, 'wall_prefactor') * (
+            _get(parameters, 'wall_coeff1') * (t_dim - tw_nd * tw_ref)
+            - _get(parameters, 'wall_coeff2') * (tw_nd * tw_ref - t_ref)
+            + qheat
         )
 
-        dTwdt = (timeRef / TwRef) / (_get(p, 'rho_w') * _get(p, 'cp_w')) * (2 * _get(p, 'h_in') * _get(p, 'r_in') / (_get(p, 'r_out') ** 2 - _get(p, 'r_in') ** 2) * (T * TRef - Tw * TRef) - 2 * _get(p, 'h_out') * _get(p, 'r_out') / (_get(p, 'r_out') ** 2 - _get(p, 'r_in') ** 2) * (Tw * TRef - TRef))
+    f[5] = r * t_dim * (f_in - f_out) / (ebed * vcol)
 
-    # dy1dt
-    dy1dt = T / (_get(p, 'e_bed') * P) * (
-        -_get(p, 'e_bed') * y1 / T * dPdt
-        + P * y1 / (T ** 2) * dTdt
-        - ((1 - _get(p, 'e_bed')) * _get(p, 'rho_s') * qRef * R * TRef / PRef * dq1dt)
-        + ((_get(p, 'y1_in') * F_in / volFluxRef - y1 * Fout / volFluxRef) / _get(p, 'V_column'))
-    )
+    m = np.zeros((6, 6), dtype=float)
+    rt_pp = r * t_dim / p_dim
 
-    dXdt = np.zeros(5, dtype=float)
-    dXdt[0] = dy1dt
-    dXdt[1] = dq1dt
-    dXdt[2] = dq2dt
-    dXdt[3] = dTdt
-    dXdt[4] = dTwdt
+    m[0, 0] = 1.0 / tref
+    m[0, 1] = rt_pp * coeff_q
+    m[0, 3] = -y1 / (t_nd * tref)
+    m[0, 5] = y1 / (p_nd * tref)
 
-    return dXdt
+    m[1, 1] = 1.0
+    m[2, 2] = 1.0
+
+    if not is_isothermal:
+        ceff = ab * (_get(parameters, 'rho_s') * _get(parameters, 'cp_s') + cp_a * _get(parameters, 'rho_s') * qref * (q1 + q2))
+        del_h1, del_h2 = _dsl_heats(parameters, y1, t_nd, p_nd)
+        is_resin = _get(parameters, 'isResin', _get(parameters, 'processType') in ('Resin', 'ResinSens'))
+        if is_resin:
+            del_h1 = -_get(parameters, 'delUb_1')
+            del_h2 = -_get(parameters, 'delUb_2')
+
+        m[3, 1] = -coeff_q * (del_h1 - cp_a * t_dim)
+        m[3, 2] = -coeff_q * (del_h2 - cp_a * t_dim)
+        m[3, 3] = ceff * t_ref / tref
+        m[3, 5] = cp_g / r * p_ref / tref
+    else:
+        m[3, 3] = 1.0
+
+    m[4, 4] = 1.0
+
+    m[5, 1] = r * t_dim * coeff_q
+    m[5, 2] = r * t_dim * coeff_q
+    m[5, 3] = -p_dim / (t_nd * tref)
+    m[5, 5] = p_ref / tref
+
+    if is_isothermal:
+        m[0, 3] = 0.0
+        m[5, 3] = 0.0
+
+    d_x = np.linalg.solve(m, f)
+    return d_x
