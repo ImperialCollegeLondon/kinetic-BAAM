@@ -438,11 +438,12 @@ try
         Fin_ads = parameters.volFlowin.*(2.*X1(:,6)-parameters.p_H)./(Rg.*parameters.T_feed);
         % Adsorption outlet flowrate from overall material balance [mol/s]:
         %   Fout = Fin - adsorption sink - gas compression + thermal expansion
-        Fout_ads = Fin_ads ...
-            - (1 - parameters.e_bed) .* parameters.V_column .* parameters.rho_s .* (gradient(X1(:,2),dt) + gradient(X1(:,3),dt)) ...  % adsorption sink
-            - (parameters.e_bed ./ (Rg*X1(:,4))) .* gradient(X1(:,6),dt) .* parameters.V_column ...                                  % gas compression term
-            + (parameters.e_bed .* X1(:,6) ./ (Rg*(X1(:,4)).^2)) .* gradient(X1(:,4),dt) .* parameters.V_column ;                   % thermal expansion term
-
+        % Fout_ads = Fin_ads ...
+        %     - (1 - parameters.e_bed) .* parameters.V_column .* parameters.rho_s .* (gradient(X1(:,2),dt) + gradient(X1(:,3),dt)) ...  % adsorption sink
+        %     - (parameters.e_bed ./ (Rg*X1(:,4))) .* gradient(X1(:,6),dt) .* parameters.V_column ...                                  % gas compression term
+        %     + (parameters.e_bed .* X1(:,6) ./ (Rg*(X1(:,4)).^2)) .* gradient(X1(:,4),dt) .* parameters.V_column ;                   % thermal expansion term
+        v_outA = (2./parameters.L) .* parameters.darcyK .* (X1(:,6) - parameters.p_H);
+        Fout_ads  = parameters.p_H .* parameters.A_in .* parameters.e_bed ./ (Rg .* X1(:,4)) .* v_outA;
         % CO2 moles and average mole fraction in ads-step effluent (used for LPP pressurisation)
         F_1_out_ads = Fout_ads.*X1(:,1);
         mol_1_out_ads = trapz(t1,F_1_out_ads); moltot_out_ads = trapz(t1,Fout_ads);
@@ -486,21 +487,28 @@ try
         % Step flowrates from overall material balance (Fin=0 for blo/evac; Fout=0 for pres)
 
         % Blowdown outlet flowrate [mol/s]: Fin=0 (inlet valve closed)
-        Fout_bd = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt)) ...
-            - (parameters.e_bed ./ (Rg.*X2(:,4))) .* gradient(X2(:,6),dt) .* parameters.V_column ...
-            + (parameters.e_bed .* X2(:,6)./ (Rg.*X2(:,4).^2)) .* gradient(X2(:,4),dt) .* parameters.V_column ;
+        % Fout_bd2 = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt)) ...
+        %     - (parameters.e_bed ./ (Rg.*X2(:,4))) .* gradient(X2(:,6),dt) .* parameters.V_column ...
+        %     + (parameters.e_bed .* X2(:,6)./ (Rg.*X2(:,4).^2)) .* gradient(X2(:,4),dt) .* parameters.V_column ;
+        v_outB = (2./parameters.L) .* parameters.darcyK .* (X2(:,6) - parameters.P_blo(t2));
+        Fout_bd  = X2(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X2(:,4)) .* v_outB;
+        % Fout_bd = 
         Fout_bd(Fout_bd<0) = 0; % enforce non-negative
 
         % Evacuation outlet flowrate [mol/s]: Fin=0; dP/dt compression term suppressed (pump-dominated)
-        Fout_evac = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X3(:,2),dt) + gradient(X3(:,3),dt)) ...
-            - 0*(parameters.e_bed ./ (Rg.*X3(:,4))) .* gradient(X3(:,6),dt) .* parameters.V_column ...
-            + (parameters.e_bed .* X3(:,6)./ (Rg.*X3(:,4).^2)) .* gradient(X3(:,4),dt) .* parameters.V_column ;
+        % Fout_evac2 = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X3(:,2),dt) + gradient(X3(:,3),dt)) ...
+        %     - (parameters.e_bed ./ (Rg.*X3(:,4))) .* gradient(X3(:,6),dt) .* parameters.V_column ...
+        %     + (parameters.e_bed .* X3(:,6)./ (Rg.*X3(:,4).^2)) .* gradient(X3(:,4),dt) .* parameters.V_column ;
+        v_outE = (2./parameters.L) .* parameters.darcyK .* (X3(:,6) - parameters.P_evac(t3));
+        Fout_evac  = X3(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X3(:,4)) .* v_outE;
         Fout_evac(Fout_evac<0) = 0; % enforce non-negative
 
         % Pressurisation inlet flowrate [mol/s]: Fout=0 (outlet valve closed)
-        Fin_pres =  (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X4(:,2),dt) + gradient(X4(:,3),dt)) ...
-            + (parameters.e_bed ./ (Rg.*X4(:,4))) .* gradient(X4(:,6),dt) .* parameters.V_column ...
-            - (parameters.e_bed .* X4(:,6)./ (Rg.*X4(:,4).^2)) .* gradient(X4(:,4),dt) .* parameters.V_column ;
+        % Fin_pres2 =  (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X4(:,2),dt) + gradient(X4(:,3),dt)) ...
+        %     + (parameters.e_bed ./ (Rg.*X4(:,4))) .* gradient(X4(:,6),dt) .* parameters.V_column ...
+        %     - (parameters.e_bed .* X4(:,6)./ (Rg.*X4(:,4).^2)) .* gradient(X4(:,4),dt) .* parameters.V_column ;
+        v_outP = -(2./parameters.L) .* parameters.darcyK .* (X4(:,6) - parameters.P_press(t4));
+        Fin_pres  = parameters.P_press(t4) .* parameters.A_in .* parameters.e_bed ./ (Rg .* parameters.T_feed) .* v_outP;
 
         if parameters.pressType == "LPP"
             mole_LP_recycle = n_1_pres-n_1_presInit;
@@ -549,7 +557,7 @@ try
         if cycle > 11
             for i = 1:4
                 for k = 0:10
-                    if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.005
+                    if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.02
                         temp_check(k+1) = 1;
                     else
                         temp_check(k+1) = 0;
