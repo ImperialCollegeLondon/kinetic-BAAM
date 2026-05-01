@@ -8,9 +8,21 @@
 %
 % Purpose:
 % Solves non-isothermal kinetic batch adsorber analogue model (k-BAAM) and outputs Purity
-% and recovery of the heavy product
+% and recovery of the heavy product. The blowdown step uses a 2-node (series CSTR)
+% spatial discretisation where P, T, and Tw are shared between nodes, and y1/q1/q2
+% are resolved independently per node.
+%
+% Blowdown state vector (9 states):
+%   Node 1 (feed end): y1_1, q1_1/qRef, q2_1/qRef
+%   Node 2 (product end): y1_2, q1_2/qRef, q2_2/qRef
+%   Shared: T/TRef, Tw/TwRef, P/PRef
+%
+% Initial conditions for blowdown nodes:
+%   Node 1: at equilibrium with y1_in at (P_ads_end, T_ads_end)
+%   Node 2: same y1, q1, q2 as at the start of adsorption (from previous cycle)
 %
 % Last modified:
+% - 2026-05-01, HA: Add 2-node blowdown using kBAAM_ODEs_nonIsothermal_ND_dP_blo2node
 % - 2025-12-18, HA: Add total material balance and pressure drop
 % - 2025-10-09, HA: Add wall energy balance
 % - 2025-10-08, HA: Add reverse engineering optimization method
@@ -26,6 +38,7 @@
 %
 % Dependencies:
 %   - kBAAM_ODEs_nonIsothermal_ND_dP.m
+%   - kBAAM_ODEs_nonIsothermal_ND_dP_blo2node.m
 %   - DSL.m
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -265,7 +278,7 @@ Rg = 8.3145; % universal gas constant [J/mol/K]
 if parameters.processType == "Resin" || parameters.processType == "ResinSens"
     dt = 0.04;
 else
-    dt = 0.1; % [s]
+    dt = 0.05; % [s]
 end
 
 if parameters.heating
@@ -424,10 +437,10 @@ try
             end
         end
 
-        if parameters.pressureDrop
-            parameters.P_initH = X1(end,6);
-            parameters.P_blo = @(t)parameters.p_I+(parameters.P_initH-parameters.p_I)*exp(-parameters.lambda*t); % pressure profile for blowdown
-        end
+        % if parameters.pressureDrop
+        %     parameters.P_initH = X1(end,6);
+        %     parameters.P_blo = @(t)parameters.p_I+(parameters.P_initH-parameters.p_I)*exp(-parameters.lambda*t); % pressure profile for blowdown
+        % end
 
         [q1max, q2max] = DSL(X1(end,6), parameters.y1_in, X1(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
         parameters.loadingFraction = (X1(end,2)-X1(1,2))./((q1max-X1(1,2)));
@@ -444,17 +457,73 @@ try
         %     + (parameters.e_bed .* X1(:,6) ./ (Rg*(X1(:,4)).^2)) .* gradient(X1(:,4),dt) .* parameters.V_column ;                   % thermal expansion term
         v_outA = (2./parameters.L) .* parameters.darcyK .* (X1(:,6) - parameters.p_H);
         Fout_ads  = parameters.p_H .* parameters.A_in .* parameters.e_bed ./ (Rg .* X1(:,4)) .* v_outA;
+        Fout_ads(Fout_ads<0) = 0;
         % CO2 moles and average mole fraction in ads-step effluent (used for LPP pressurisation)
         F_1_out_ads = Fout_ads.*X1(:,1);
         mol_1_out_ads = trapz(t1,F_1_out_ads); moltot_out_ads = trapz(t1,Fout_ads);
         parameters.y1_LPP = mol_1_out_ads./moltot_out_ads; % avg CO2 mole fraction in LPP gas [-]
 
-        [t2, X2] = ode15s(@(t,X) odeFunc(t,X,parameters,'blo'), t_blo./(parameters.timeRef), X0, options); %t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
-        t2 = t2.*parameters.timeRef;
-        X2(X2<0) = 0;
-        X2(X2(:,1)>1,1) = 1;
-        X0 = X2(end,:)';
-        X2 = X2.*parameters.refVals;
+        %% ---- Blowdown: 2-node integration ----
+        options2 = odeset('RelTol', 1e-5, 'AbsTol', 1e-5, 'MaxOrder', 2);
+        % refVals for the 10-state blowdown vector:
+        %   [1, qRef, qRef, 1, qRef, qRef, TRef, TwRef, PRef, PRef]
+        refVals_blo = [1, parameters.qRef, parameters.qRef, ...    % node 1: y1_1, q1_1, q2_1
+                       1, parameters.qRef, parameters.qRef, ...    % node 2: y1_2, q1_2, q2_2
+                       parameters.TRef, parameters.TwRef, ...      % shared T, Tw
+                       parameters.PRef, parameters.PRef];          % P1, P2
+
+        % Node 1 initial condition: equilibrium with y1_in at end-of-ads (P, T)
+        P_ads_end = X1(end,6);  % [Pa]
+        T_ads_end = X1(end,4);  % [K]
+        if ~parameters.SSLSTA
+            [q1_n1, q2_n1] = DSL(P_ads_end, parameters.y1_in, T_ads_end, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+        else
+            [q1_n1, q2_n1] = SSLSTA(P_ads_end, parameters.y1_in, T_ads_end, parameters);
+        end
+
+        % Node 2 initial condition: y1 at end of adsorption; q1, q2 at start of adsorption
+        % (product end sees end-of-ads composition but start-of-ads loading)
+        y1_n2 = X1(end,1); % [mol frac] — end-of-ads mole fraction
+        q1_n2 = X1(1,2);   % [mol/kg]  — start-of-ads loading
+        q2_n2 = X1(1,3);   % [mol/kg]  — start-of-ads loading
+
+        % Both nodes start at the same pressure (end-of-ads column pressure)
+        X0_blo = [parameters.y1_in; q1_n1; q2_n1; ...   % node 1
+                  y1_n2;            q1_n2; q2_n2; ...   % node 2
+                  T_ads_end; X1(end,5); ...              % shared T, Tw
+                  P_ads_end; P_ads_end] ...              % P1, P2 (same at t=0)
+                 ./ refVals_blo';
+
+        [t2, X2_10] = ode15s(@(t,X) kBAAM_ODEs_nonIsothermal_ND_dP_blo2node(t,X,parameters), t_blo./(parameters.timeRef), X0_blo, options2);
+        t2 = t2 .* parameters.timeRef;
+        X2_10(X2_10 < 0) = 0;
+        X2_10(X2_10(:,1) > 1, 1) = 1;
+        X2_10(X2_10(:,4) > 1, 4) = 1;
+
+        % Scale back to dimensional
+        X2_10dim = X2_10 .* refVals_blo;
+
+        % Collapse to 6-state for evac IC: loadingFraction-weighted average,
+        % P = volume-weighted average of P1 and P2
+        f_w = max(0.1, min(0.9, parameters.loadingFraction));  % same clamp as ODE
+        y1_blo_end = f_w.*X2_10dim(end,1) + (1-f_w).*X2_10dim(end,4);
+        q1_blo_end = f_w.*X2_10dim(end,2) + (1-f_w).*X2_10dim(end,5);
+        q2_blo_end = f_w.*X2_10dim(end,3) + (1-f_w).*X2_10dim(end,6);
+        T_blo_end  = X2_10dim(end,7);
+        Tw_blo_end = X2_10dim(end,8);
+        P_blo_end  = f_w.*X2_10dim(end,9) + (1-f_w).*X2_10dim(end,10);  % vol-weighted avg P
+        X0 = [y1_blo_end; q1_blo_end; q2_blo_end; T_blo_end; Tw_blo_end; P_blo_end] ./ parameters.refVals';
+
+        % Build a pseudo 6-column X2 (time × 6) for KPI/energy calculations below.
+        % Columns: [y1_avg, q1_avg, q2_avg, T, Tw, P_avg]
+        P_avg_blo = f_w.*X2_10dim(:,9) + (1-f_w).*X2_10dim(:,10);
+        X2 = [ f_w.*X2_10dim(:,1) + (1-f_w).*X2_10dim(:,4), ...
+               f_w.*X2_10dim(:,2) + (1-f_w).*X2_10dim(:,5), ...
+               f_w.*X2_10dim(:,3) + (1-f_w).*X2_10dim(:,6), ...
+               X2_10dim(:,7), X2_10dim(:,8), P_avg_blo];
+
+        % Outlet composition during blowdown is node-2 (product-end) composition
+        y1_bd_out = X2_10dim(:,4);
 
         [t3, X3] = ode15s(@(t,X) odeFunc(t,X,parameters,'evac'), t_evac./(parameters.timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
         t3 = t3.*parameters.timeRef;
@@ -472,9 +541,20 @@ try
 
         %% Mole inventories at end of each step (gas-phase + adsorbed-phase) [mol]
         n_1_ads = (X1(end,1).*X1(end,6) * parameters.V_column * parameters.e_bed / (Rg * X1(end,4))) + X1(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        n_1_bd =   (X2(end,1) .*X2(end,6) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        % n_1_bd / n_2_bd: sum both nodes, each with its own pressure
+        f_blo = max(0.1, min(0.9, parameters.loadingFraction));  % same clamp as ODE
+        V_node1_blo = f_blo      * parameters.V_column;
+        V_node2_blo = (1-f_blo) * parameters.V_column;
+        T_bd_end  = X2_10dim(end,7);
+        P1_bd_end = X2_10dim(end,9);
+        P2_bd_end = X2_10dim(end,10);
+        % n_1_bd = (X2_10dim(end,1).*P1_bd_end*V_node1_blo*parameters.e_bed/(Rg*T_bd_end)) + X2_10dim(end,2)*V_node1_blo*(1-parameters.e_bed)*parameters.rho_s ...  % node 1
+        %        + (X2_10dim(end,4).*P2_bd_end*V_node2_blo*parameters.e_bed/(Rg*T_bd_end)) + X2_10dim(end,5)*V_node2_blo*(1-parameters.e_bed)*parameters.rho_s;   % node 2
+        n_1_bd = (X3(1,1) .*X3(1,6) * parameters.V_column * parameters.e_bed / (Rg * X3(1,4))) + X3(1,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_1_evac = (X3(end,1) .*X3(end,6) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
-        n_2_bd = ((1-X2(end,1)).*X2(end,6) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        % n_2_bd = ((1-X2_10dim(end,1)).*P1_bd_end*V_node1_blo*parameters.e_bed/(Rg*T_bd_end)) + X2_10dim(end,3)*V_node1_blo*(1-parameters.e_bed)*parameters.rho_s ...  % node 1
+        %        + ((1-X2_10dim(end,4)).*P2_bd_end*V_node2_blo*parameters.e_bed/(Rg*T_bd_end)) + X2_10dim(end,6)*V_node2_blo*(1-parameters.e_bed)*parameters.rho_s;   % node 2
+        n_2_bd = ((1-X3(1,1)).*X3(1,6) * parameters.V_column * parameters.e_bed / (Rg * X3(1,4))) + X3(1,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_2_evac = ((1-X3(end,1)).*X3(end,6) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_1_pres = (X4(end,1).*X4(end,6) * parameters.V_column * parameters.e_bed / (Rg * X4(end,4))) + X4(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_1_presInit = (X4(1,1).*X4(1,6) * parameters.V_column * parameters.e_bed / (Rg * X4(1,4))) + X4(1,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
@@ -487,12 +567,14 @@ try
         % Step flowrates from overall material balance (Fin=0 for blo/evac; Fout=0 for pres)
 
         % Blowdown outlet flowrate [mol/s]: Fin=0 (inlet valve closed)
-        % Fout_bd2 = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt)) ...
+        % Fout_bd = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt)) ...
         %     - (parameters.e_bed ./ (Rg.*X2(:,4))) .* gradient(X2(:,6),dt) .* parameters.V_column ...
         %     + (parameters.e_bed .* X2(:,6)./ (Rg.*X2(:,4).^2)) .* gradient(X2(:,4),dt) .* parameters.V_column ;
-        v_outB = (2./parameters.L) .* parameters.darcyK .* (X2(:,6) - parameters.P_blo(t2));
-        Fout_bd  = X2(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X2(:,4)) .* v_outB;
-        % Fout_bd = 
+        % Blowdown outlet flow exits from node-2 (product end); use P2 directly
+        % v_out distance = node-2 centre to outlet = L2/2, so factor = 2/L2
+        L2_blo   = (1 - f_blo) * parameters.L;
+        v_outB   = (2./L2_blo) .* parameters.darcyK .* (X2_10dim(:,10) - parameters.P_blo(t2));
+        Fout_bd  = X2_10dim(:,10) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X2_10dim(:,7)) .* v_outB;
         Fout_bd(Fout_bd<0) = 0; % enforce non-negative
 
         % Evacuation outlet flowrate [mol/s]: Fin=0; dP/dt compression term suppressed (pump-dominated)
@@ -520,6 +602,8 @@ try
         
         eta_bd = 0.8.*(19.55.*parameters.P_blo(t2).*1e-5./(1+19.55.*parameters.P_blo(t2).*1e-5));
         eta_evac = 0.8.*(19.55.*parameters.P_evac(t3).*1e-5./(1+19.55.*parameters.P_evac(t3).*1e-5));
+        % eta_bd = 0.8.*(19.55.*X2(:,6).*1e-5./(1+19.55.*X2(:,6).*1e-5));
+        % eta_evac = 0.8.*(19.55.*X3(:,6).*1e-5./(1+19.55.*X3(:,6).*1e-5));
         eta_press = 0.72;
         eta_ads = 0.72;
 
@@ -536,7 +620,7 @@ try
         % Adiabatic compression work [J]: W = (F*R*T/eta) * (gamma/(gamma-1)) * ((P_out/P_in)^((gamma-1)/gamma) - 1)
         % BD/EVAC: column gas temperature used (gas is already inside column)
         % PRES/FAN: T_feed used (compressor/fan draws in ambient feed gas)
-        EC_BD   = trapz(t2,1./eta_bd    .*Fout_bd  .*Rg.*X2(:,4).*(1.4./0.4).*((P_atm./min(P_atm,parameters.P_blo(t2))).^(0.4./1.4)-1));   % vacuum pump work, BD step [J]
+        EC_BD   = trapz(t2,1./eta_bd    .*Fout_bd  .*Rg.*X2(:,4).*(1.4./0.4).*((P_atm./min(P_atm,parameters.P_blo(t2))).^(0.4./1.4)-1));  % vacuum pump work, BD step [J]
         EC_EVAC = trapz(t3,1./eta_evac  .*Fout_evac.*Rg.*X3(:,4).*(1.4./0.4).*((P_atm./min(P_atm,parameters.P_evac(t3))).^(0.4./1.4)-1)); % vacuum pump work, evac step [J]
         EC_PRES = trapz(t4,1./eta_press .*Fin_pres .*Rg.*parameters.T_feed.*(1.4./0.4).*((max(P_atm,parameters.P_press(t4))./P_atm).^(0.4./1.4)-1)); % compressor work, pres step [J]
         EC_FAN  = trapz(t1, 1./eta_ads  .*Fin_ads  .*Rg.*parameters.T_feed.*(1.4./0.4).*((max(P_atm,(2.*X1(:,6)-parameters.p_H))./P_atm).^(0.4./1.4)-1));  % fan work, ads step [J]
@@ -547,6 +631,19 @@ try
         purity_percentageValues(cycle) = purity_percentage;
         productivity_Values(cycle) = productivity;
         SEC_Values(cycle) = SEC;
+
+
+    t_cycle = [t1; t2 + t1(end); t3 + t1(end) + t2(end); t4 + t1(end) + t2(end) + t3(end)]; %Shift the t2 time vector forward in time so it starts immediately after t1 ends
+    X_cycle = [X1; X2; X3; X4];
+    F_cycleOut = [Fout_ads;Fout_bd;Fout_evac;zeros(length(t4),1)];
+    F_cycleIn = [Fin_ads;zeros(length(t2),1);zeros(length(t3),1);Fin_pres];
+
+            mol1in  = trapz(t_cycle,F_cycleIn.*1);
+    % mol1out  = trapz(t_cycle,F_cycleOut.*X_cycle(:,1));
+    mol1out  = trapz(t_cycle,F_cycleOut.*1);
+    MBerror = mol1in - mol1out;
+    MBerror = 0;
+    MBerrorVals(cycle) = MBerror;
 
         process_indicators = [purity_percentageValues; recovery_percentageValues; productivity_Values; SEC_Values];
 
@@ -643,6 +740,7 @@ end
 %%
 if parameters.outputType == "plot"
     t_cycle = [t1; t2 + t1(end); t3 + t1(end) + t2(end); t4 + t1(end) + t2(end) + t3(end)]; %Shift the t2 time vector forward in time so it starts immediately after t1 ends
+    X2(:,1) = y1_bd_out;
     X_cycle = [X1; X2; X3; X4];
     F_cycleOut = [Fout_ads;Fout_bd;Fout_evac;zeros(length(t4),1)];
     F_cycleIn = [Fin_ads;zeros(length(t2),1);zeros(length(t3),1);Fin_pres];
@@ -653,7 +751,7 @@ if parameters.outputType == "plot"
         t0 = 1;
     end
     P1 = X1(:,6);
-    P2 = X2(:,6);
+    P2 = X2(:,6);  % shared P (column 6 of collapsed X2)
     P3 = X3(:,6);
     P4 = X4(:,6);
     t_ads_end  = t1(end);
@@ -798,6 +896,9 @@ if parameters.outputType == "plot"
     dq1dt = gradient(q1vals,dt);
     dq2dt = gradient(q2vals,dt);
 
+
+
+
     Dp = parameters.Dm/parameters.tau; % Effective pore diffusivity [m2/s]
 
     subplot(1,2,1)
@@ -818,6 +919,8 @@ if parameters.outputType == "plot"
 
     if parameters.testBT
         KPIs = [purity_percentage, recovery_percentage, SEC, productivity,simTime,cycle ,X1(1,6)];
+    else
+        KPIs = process_indicators;
     end
 elseif parameters.OptType ~= "sampling"
     % Append KPI results to rawData/<fileName>.txt

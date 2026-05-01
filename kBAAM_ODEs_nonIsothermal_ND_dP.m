@@ -123,25 +123,26 @@ switch stepName
 
         % Outlet flow from Darcy's law at product end
         v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
-        Fout  = P_out.*PRef .* A .* e ./ (R .* T.*TRef) .* v_out;
+        Fout  = P_out.*PRef .* A .* e ./ (R .* T.*TRef) .* v_out; 
+        % Fout  = max(0,Fout);
 
-    case 'blo'
-        P_out = parameters.P_blo(t.*tRef) ./ PRef;
-
-        % Equilibrium at outlet composition
-        [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
-
-        % LDF coefficient evaluated at initial (pre-blowdown) conditions
-        [k1, k2] = LDFCoefficient(P_dim,parameters.y1init,T_dim,parameters.q1init,parameters.q2init,parameters);
-        dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
-        dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
-
-        F_in  = 0;
-        y1_in = 0;
-
-        % Outlet flow from Darcy (co-current, factor of 2 for linear profile)
-        v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
-        Fout  = P_dim .* A .* e ./ (R .* T_dim) .* v_out;
+    % case 'blo'
+    %     P_out = parameters.P_blo(t.*tRef) ./ PRef;
+    % 
+    %     % Equilibrium at outlet composition
+    %     [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+    % 
+    %     % LDF coefficient evaluated at initial (pre-blowdown) conditions
+    %     [k1, k2] = LDFCoefficient(P_dim, y1, T_dim, q1_star, q2_star, parameters);
+    %     dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
+    %     dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
+    % 
+    %     F_in  = 0;
+    %     y1_in = 0;
+    % 
+    %     % Outlet flow from Darcy (co-current, factor of 2 for linear profile)
+    %     v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
+    %     Fout  = P_dim .* A .* e ./ (R .* T_dim) .* v_out;
 
     case 'evac'
         P_out = parameters.P_evac(t.*tRef) ./ PRef;

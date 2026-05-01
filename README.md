@@ -96,6 +96,18 @@ pip install numpy>=1.26 scipy>=1.13 pymoo>=0.6.0 matplotlib>=3.8 matplotlib-inli
 ## Change Log
 All notable changes to this project will be documented in this file.
 
+###  Two-node blowdown step - 2026-05-01
+#### Added
+- `kBAAM_ODEs_nonIsothermal_ND_dP_blo2node.m`: new 10-state ODE for the blowdown step with two spatially-resolved nodes. Node 1 (feed end) occupies a fraction of the column volume determined by the adsorption loading fraction; node 2 (product end) occupies the remainder. Each node carries an independent pressure state (P1, P2), enabling decoupled depressurisation dynamics.
+
+#### Changed
+- `kBAAM_Outputs_nonIsothermal_dP.m`: blowdown step now calls the two-node ODE. Initial conditions and reference-value vectors expanded to 10 states. Post-blowdown collapse to the single-node state uses a loading-fraction-weighted average. Outlet flow (`Fout_bd`) and mole inventories now use the node-2 pressure directly.
+
+#### Details
+- Darcy velocities use per-node half-lengths: `v_12 = (2/L1)*darcyK*(P1-P2)*PRef` (node 1 centre to interface) and `v_out = (2/L2)*darcyK*(P2-P_blo)*PRef` (node 2 centre to outlet)
+- LDF kinetics evaluated at the local node pressure
+- Axial dispersion between nodes included via a Peclet-based coefficient
+
 ###  MATLAB/Python parity update - 2026-04-23
 #### Changed
 - refactored the MATLAB non-isothermal pressure-drop workflow to improve structure and performance, including updates to the core ODE and outputs drivers and related NSGA scripts
