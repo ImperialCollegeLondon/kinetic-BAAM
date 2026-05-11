@@ -26,8 +26,8 @@
 % Flow model (nodes sized by adsorption loading fraction, independent pressures):
 %   Node 1 (feed end)    occupies fraction f = loadingFraction of column volume.
 %   Node 2 (product end) occupies fraction (1-f) of column volume.
-%   Darcy velocity node 1 → node 2 (node 1 centre to interface = L1/2):
-%     v_12  = (2/L1) * darcyK * (P1 - P2)     * PRef   [m/s]
+%   Darcy velocity node 1 → node 2 (node 1 centre to node 2 centre = L/2):
+%     v_12  = (2/L) * darcyK * (P1 - P2)     * PRef   [m/s]
 %   Darcy velocity node 2 → outlet (node 2 centre to outlet = L2/2):
 %     v_out = (2/L2) * darcyK * (P2 - P_blo)  * PRef   [m/s]
 %
@@ -53,22 +53,43 @@
 %   - computeDSLHeatUnary.m / computeSSLSTAHeatBinaryBT.m
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function dXdt = kBAAM_ODEs_nonIsothermal_ND_dP_blo2node(t, X, parameters)
+function dXdt = kBAAM_ODEs_nonIsothermal_ND_dP_blo2node(t, X, parameters,stepName)
 
 R = 8.3145;
 
-% ---- Unpack states ----
-y1_1 = max(0, min(1, X(1)));
-q1_1 = X(2);
-q2_1 = X(3);
-y1_2 = max(0, min(1, X(4)));
-q1_2 = X(5);
-q2_2 = X(6);
-T    = max(X(7),  1e-9);   % shared dimensionless temperature
-Tw   = X(8);               % shared dimensionless wall temperature
-P1   = max(X(9),  1e-9);   % node 1 dimensionless pressure
-P2   = max(X(10), 1e-9);   % node 2 dimensionless pressure
+    % ---- Unpack states ----
+    y1_1 = max(0, min(1, X(1)));
+    q1_1 = X(2);
+    q2_1 = X(3);
+    y1_2 = max(0, min(1, X(4)));
+    q1_2 = X(5);
+    q2_2 = X(6);
+    T    = max(X(7),  1e-9);   % shared dimensionless temperature
+    Tw   = X(8);               % shared dimensionless wall temperature
+    P1   = max(X(9),  1e-9);   % node 1 dimensionless pressure
+    P2   = max(X(10), 1e-9);   % node 2 dimensionless pressure
 
+if string(stepName) == "blo"
+    % Per-node volumes based on adsorption loading fraction.
+    % Clamp to [0.1, 0.95] to prevent degenerate small nodes that cause excessive stiffness.
+    f_node = max(0.05, min(0.95, parameters.loadingFraction));
+else
+    % ---- Unpack states ----
+    % y1_2 = max(0, min(1, X(1)));
+    % q1_2 = X(2);
+    % q2_2 = X(3);
+    % y1_1 = max(0, min(1, X(4)));
+    % q1_1 = X(5);
+    % q2_1 = X(6);
+    % T    = max(X(7),  1e-9);   % shared dimensionless temperature
+    % Tw   = X(8);               % shared dimensionless wall temperature
+    % P2   = max(X(9),  1e-9);   % node 1 dimensionless pressure
+    % P1   = max(X(10), 1e-9);   % node 2 dimensionless pressure
+
+    % Per-node volumes based on adsorption loading fraction.
+    % Clamp to [0.1, 0.95] to prevent degenerate small nodes that cause excessive stiffness.
+    f_node = 1-max(0.05, min(0.95, parameters.loadingFraction));
+end
 % ---- Unpack parameters ----
 tRef      = parameters.timeRef;
 qRef      = parameters.qRef;
@@ -85,10 +106,7 @@ L         = parameters.L;
 A         = parameters.A_in;
 tRef_qRef = parameters.tRef_qRef;
 darcyK    = parameters.darcyK;
-
-% Per-node volumes based on adsorption loading fraction.
-% Clamp to [0.1, 0.9] to prevent degenerate small nodes that cause excessive stiffness.
-f_node = max(0.1, min(0.9, parameters.loadingFraction));
+% % f_node = parameters.loadingFraction;
 V_node1 = f_node * V;
 V_node2 = (1 - f_node) * V;
 
@@ -97,13 +115,18 @@ P1_dim = P1 * PRef;
 P2_dim = P2 * PRef;
 T_dim  = T  * TRef;
 
+if string(stepName) == "blo"
 % ---- Prescribed outlet pressure (product end of node 2) ----
 P_out = parameters.P_blo(t * tRef) / PRef;
+else
+% ---- Prescribed outlet pressure (product end of node 2) ----
+P_out = parameters.P_evac(t * tRef) / PRef;
+end
 
 % ---- Darcy flows: independent per leg, each scaled by its own node length ----
 L1 = f_node * L;        % length of node 1 [m]
 L2 = (1 - f_node) * L; % length of node 2 [m]
-v_12  = (2/L1) * darcyK * (P1 - P2)    * PRef;   % [m/s] node 1→2, centre-to-interface = L1/2
+v_12  = (2./L) * darcyK * (P1 - P2)    * PRef;   % [m/s] node 1→2, centre-to-interface = L1/2
 v_out = (2/L2) * darcyK * (P2 - P_out) * PRef;   % [m/s] node 2→outlet, centre-to-outlet = L2/2
 
 % Inter-node molar flow (upstream density from P1)
@@ -137,14 +160,14 @@ dq2dt_2 = tRef_qRef * k2_2 * (q2_star2 - q2_2 * qRef);
 f = zeros(10, 1);
 
 % Node 1: y1 balance (F_in=0, convective outflow F_12, dispersive loss F_disp)
-f(1) = R * T_dim / P1_dim * (0 - y1_1 * F_12 - F_disp) / (e * V_node1);
+f(1) = R * T_dim / P1_dim * (0 - y1_1 * F_12 - 0) / (e * V_node1);
 
 % Node 1: adsorbed phase
 f(2) = dq1dt_1;
 f(3) = dq2dt_1;
 
 % Node 2: y1 balance (convective inflow F_12 at y1_1, dispersive gain F_disp, outflow F_out at y1_2)
-f(4) = R * T_dim / P2_dim * (y1_1 * F_12 + F_disp - y1_2 * F_out) / (e * V_node2);
+f(4) = R * T_dim / P2_dim * (y1_1 * F_12 + 0 - y1_2 * F_out) / (e * V_node2);
 
 % Node 2: adsorbed phase
 f(5) = dq1dt_2;
@@ -234,7 +257,8 @@ if ~parameters.isIsothermal
     if parameters.SSLSTA
         [delH1, delH2] = computeSSLSTAHeatBinaryBT(P_avg*PRef/1e5, y1_avg, T_dim, [parameters.SSLSTA1'; parameters.SSLSTA2']);
     else
-        [delH1, delH2] = computeDSLHeatUnary(P_avg, y1_avg, T, PRef, TRef, parameters);
+        [delH1_1, delH2_1] = computeDSLHeatUnary(P1, y1_1, T, PRef, TRef, parameters);
+        [delH1_2, delH2_2] = computeDSLHeatUnary(P2, y1_2, T, PRef, TRef, parameters);
     end
     if parameters.isResin
         delH1 = -parameters.delUb_1;
@@ -242,10 +266,10 @@ if ~parameters.isIsothermal
     end
 
     % ---- Row 7: shared energy balance ----
-    nz=nz+1; ii(nz)=7; jj(nz)=2;  vv(nz) = -coeff_q*f_node     * (delH1 - cp_a * T_dim);  % node 1 q1
-    nz=nz+1; ii(nz)=7; jj(nz)=3;  vv(nz) = -coeff_q*f_node     * (delH2 - cp_a * T_dim);  % node 1 q2
-    nz=nz+1; ii(nz)=7; jj(nz)=5;  vv(nz) = -coeff_q*(1-f_node) * (delH1 - cp_a * T_dim);  % node 2 q1
-    nz=nz+1; ii(nz)=7; jj(nz)=6;  vv(nz) = -coeff_q*(1-f_node) * (delH2 - cp_a * T_dim);  % node 2 q2
+    nz=nz+1; ii(nz)=7; jj(nz)=2;  vv(nz) = -coeff_q*f_node     * (delH1_1 - cp_a * T_dim);  % node 1 q1
+    nz=nz+1; ii(nz)=7; jj(nz)=3;  vv(nz) = -coeff_q*f_node     * (delH2_1 - cp_a * T_dim);  % node 1 q2
+    nz=nz+1; ii(nz)=7; jj(nz)=5;  vv(nz) = -coeff_q*(1-f_node) * (delH1_2 - cp_a * T_dim);  % node 2 q1
+    nz=nz+1; ii(nz)=7; jj(nz)=6;  vv(nz) = -coeff_q*(1-f_node) * (delH2_2 - cp_a * T_dim);  % node 2 q2
     nz=nz+1; ii(nz)=7; jj(nz)=7;  vv(nz) = Ceff * TRef / tRef;
     nz=nz+1; ii(nz)=7; jj(nz)=9;  vv(nz) = f_node     * cp_g / R * PRef / tRef;  % node 1 P contribution
     nz=nz+1; ii(nz)=7; jj(nz)=10; vv(nz) = (1-f_node) * cp_g / R * PRef / tRef;  % node 2 P contribution

@@ -61,12 +61,12 @@
 function dXdt = kBAAM_ODEs_nonIsothermal_ND_dP(t,X,parameters,stepName)
 
 % Unpack state variables
-y1 = max(0,min(1,X(1)));   % mole fraction of component 1 [-]
+y1 = max(1e-11,min(1,X(1)));   % mole fraction of component 1 [-]
 q1 = X(2);   % dimensionless adsorbed amount of component 1 [-]
 q2 = X(3);   % dimensionless adsorbed amount of component 2 [-]
-T  = max(X(4),1e-9);   % dimensionless temperature [-]
+T  = max(X(4),1e-11);   % dimensionless temperature [-]
 Tw = X(5);   % dimensionless wall temperature [-]
-P  = max(X(6),1e-9);   % dimensionless pressure [-]
+P  = max(X(6),1e-11);   % dimensionless pressure [-]
 
 R = 8.3145;  % universal gas constant [J/molK]
 
@@ -111,8 +111,10 @@ switch stepName
             [q1_starIn, q2_starIn] = getEquilibriumLoadings(P, parameters.y1_in, T, PRef, TRef, parameters);
             [q1_start, q2_start]   = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
             [k1In, ~]  = LDFCoefficient(P_dim, y1, T_dim, q1_starIn, q2_starIn, parameters);
-            [~, k2t]   = LDFCoefficient(P_dim, y1, T_dim, q1_start,  q2_start,  parameters);
+            [k1t, k2t]   = LDFCoefficient(P_dim, y1, T_dim, q1_start,  q2_start,  parameters);
             dq1dt = tRef_qRef .* k1In .* (q1_starIn - q1.*qRef);
+            % dq1dt = (1-parameters.loadingFraction).*tRef_qRef .* k1In .* (q1_starIn - q1.*qRef) ...
+            %     + parameters.loadingFraction.*tRef_qRef .* k1t .* (q1_start - q1.*qRef);
             dq2dt = tRef_qRef .* k2t  .* (q2_start  - q2.*qRef);
         end
 
@@ -123,26 +125,26 @@ switch stepName
 
         % Outlet flow from Darcy's law at product end
         v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
-        Fout  = P_out.*PRef .* A .* e ./ (R .* T.*TRef) .* v_out; 
+        Fout  = P_out *PRef .* A .* e ./ (R .* T.*TRef) .* v_out; 
         % Fout  = max(0,Fout);
 
-    % case 'blo'
-    %     P_out = parameters.P_blo(t.*tRef) ./ PRef;
-    % 
-    %     % Equilibrium at outlet composition
-    %     [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
-    % 
-    %     % LDF coefficient evaluated at initial (pre-blowdown) conditions
-    %     [k1, k2] = LDFCoefficient(P_dim, y1, T_dim, q1_star, q2_star, parameters);
-    %     dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
-    %     dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
-    % 
-    %     F_in  = 0;
-    %     y1_in = 0;
-    % 
-    %     % Outlet flow from Darcy (co-current, factor of 2 for linear profile)
-    %     v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
-    %     Fout  = P_dim .* A .* e ./ (R .* T_dim) .* v_out;
+    case 'blo'
+        P_out = parameters.P_blo(t.*tRef) ./ PRef;
+
+        % Equilibrium at outlet composition
+        [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+
+        % LDF coefficient evaluated at outlet conditions
+        [k1, k2] = LDFCoefficient(P_dim, y1, T_dim, q1_star, q2_star, parameters);
+        dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
+        dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
+
+        F_in  = 0;
+        y1_in = 0;
+
+        % Outlet flow from Darcy (co-current, factor of 2 for linear profile)
+        v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
+        Fout  = P_dim .* A .* e ./ (R .* T_dim) .* v_out;
 
     case 'evac'
         P_out = parameters.P_evac(t.*tRef) ./ PRef;
@@ -218,7 +220,7 @@ end
 % Row 6: Overall material balance — flow source only
 f(6) = R.*T_dim .* (F_in - Fout) ./ (e.*V);
 
-M = buildMassMatrix(y1,q1,q2,T,P,parameters,R,tRef,qRef,TRef,PRef,Ab,coeff_q,cp_a,cp_g);
+M = buildMassMatrix(y1,q1,q2,T,P,parameters,R,tRef,qRef,TRef,PRef,Ab,coeff_q,cp_a,cp_g,stepName);
 dXdt = M\f;
 end
 
@@ -230,7 +232,7 @@ else
 end
 end
 
-function M = buildMassMatrix(y1,q1,q2,T,P,parameters,R,tRef,qRef,TRef,PRef,Ab,coeff_q,cp_a,cp_g)
+function M = buildMassMatrix(y1,q1,q2,T,P,parameters,R,tRef,qRef,TRef,PRef,Ab,coeff_q,cp_a,cp_g,stepName)
 P_dim = P .* PRef;
 T_dim = T .* TRef;
 
@@ -255,12 +257,18 @@ nz=nz+1; ii(nz)=3; jj(nz)=3; vv(nz) = 1;
 if ~parameters.isIsothermal
     % Effective heat capacity [J/m3K]
     Ceff = Ab * (parameters.rho_s * parameters.cp_s + cp_a * parameters.rho_s * qRef * (q1 + q2));
-
+    
+    if string(stepName) == "ads" && ~parameters.cCSTR
+        y1val = parameters.y1_in;
+    else
+        y1val = y1;
+    end
     % Heat of adsorption [J/mol]
     if parameters.SSLSTA
         [delH1, delH2] = computeSSLSTAHeatBinaryBT(P_dim./1e5, y1, T_dim, [parameters.SSLSTA1'; parameters.SSLSTA2']);
     else
-        [delH1, delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
+        [delH1, ~] = computeDSLHeatUnary(P, y1val, T, PRef, TRef, parameters);
+        [~, delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
     end
 
     if parameters.isResin

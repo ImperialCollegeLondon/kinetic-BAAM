@@ -235,10 +235,17 @@ switch stepName
                 Fout = 0;
 end
 
+    
+if string(stepName) == "ads" && ~parameters.cCSTR
+    y1val = parameters.y1_in;
+else
+    y1val = y1;
+end
+
 if parameters.SSLSTA
     [delH1,delH2] = computeSSLSTAHeatBinary(P.*PRef./1e5, y1, T.*TRef, parameters);
 else
-    [delH1,delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
+    [delH1,delH2] = computeDSLHeatUnary(P, y1val, T, PRef, TRef, parameters);
 end
 
 if parameters.processType == "Resin" || parameters.processType == "ResinSens"

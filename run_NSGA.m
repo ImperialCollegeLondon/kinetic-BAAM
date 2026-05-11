@@ -29,8 +29,8 @@ function run_NSGA(parameters)
 addpath(genpath(pwd))
 
 if parameters.processType == "PVSA"  % Optimization for fixed adsorbent defined in parameters using PVSA
-    lb = [0.3.*0.37,  (0.13e5),    40,    30,    30,   (1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
-    ub = [3.*0.37,    (5e5),     300,  300,  300,  (10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
+    lb = [0.2.*0.37,  (0.13e5),    30,    30,    30,    (1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
+    ub = [2.*0.37,    (9e5),     300,  300,  300,    (10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
 
     % lb = [0.1.*0.37,  (0.13e5),    20,    30,    30,  (0.02e5),  (1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
     % ub = [3.*0.37,    (3e5),     300,  300,  300,  (0.5e5),  (10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
@@ -168,8 +168,8 @@ else
     %% Solve optimisation problem using genetic algorithm
     % Genetic algorithm settings
     nVars = length(lb);
-    ngens = 70;     % Maximum number of generations
-    pop_size = 120; % Number of members in population of each generation [-]
+    ngens = 80;     % Maximum number of generations
+    pop_size = 140; % Number of members in population of each generation [-]
 
     rng default
     X0 = lhsdesign(pop_size,nVars); % Latin hypercube sampling to generate initial population matrix
