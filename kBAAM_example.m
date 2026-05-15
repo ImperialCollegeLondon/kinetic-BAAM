@@ -4,6 +4,7 @@ close all
 
 %% Run to CSS and plot cycle corresponding to theta
 % run createParameters.m first to generate the parameter struct
+createParameters
 load('13XH_T.mat')
 
 parameters.outputType = "plot";

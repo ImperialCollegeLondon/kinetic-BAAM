@@ -393,7 +393,7 @@ end
 parameters.y1_LPP = 0.15; % initialize LP composition
 options = odeset('RelTol', 1e-6, 'AbsTol', 1e-6, 'MaxOrder', 2);
 
-% try
+try
     while  cycle < max_no_Cycles && mean(temp_check) < 1  && parameters.p_H > parameters.p_I && parameters.p_I > parameters.p_L
 
         cycle = cycle+1;
@@ -776,38 +776,38 @@ options = odeset('RelTol', 1e-6, 'AbsTol', 1e-6, 'MaxOrder', 2);
         KPIs = [purity_percentage, recovery_percentage, SEC, productivity,simTime,cycle];
     end
 
-% catch
-%     SEC = 100e6;
-%     purity_percentage = 0;
-%     recovery_percentage = 0;
-%     productivity = 0;
-%     simTime = 1e3;
-% 
-%     if parameters.processType == "Resin" || parameters.amine
-%         if parameters.OptType == "Const"
-%             phi_pen = [0, 0];
-%             phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(0-recovery_percentage))).^2;
-%             phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(0-recovery_percentage))).^2);
-%             KPIs = [(-productivity+phi_pen(1)) 3600.*50*(SEC.*2.77778e-7+phi_pen(2))];
-%         else
-%             KPIs = [ -purity_percentage -recovery_percentage];
-%         end
-%     else
-%         if parameters.OptType == "Const"
-%             phi_pen = [0, 0];
-%             phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(90-recovery_percentage))).^2;
-%             phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(90-recovery_percentage))).^2);
-%             KPIs = [(-productivity+phi_pen(1)) 1*(SEC.*2.77778e-7+phi_pen(2))];
-%         else
-%             KPIs = [ -purity_percentage -recovery_percentage];
-%         end
-%     end
-% 
-%     if parameters.OptType == "sampling"
-%         KPIs = [purity_percentage, recovery_percentage, SEC, productivity,simTime,cycle];
-%     end
-% 
-% end
+catch
+    SEC = 100e6;
+    purity_percentage = 0;
+    recovery_percentage = 0;
+    productivity = 0;
+    simTime = 1e3;
+
+    if parameters.processType == "Resin" || parameters.amine
+        if parameters.OptType == "Const"
+            phi_pen = [0, 0];
+            phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(0-recovery_percentage))).^2;
+            phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(0-recovery_percentage))).^2);
+            KPIs = [(-productivity+phi_pen(1)) 3600.*50*(SEC.*2.77778e-7+phi_pen(2))];
+        else
+            KPIs = [ -purity_percentage -recovery_percentage];
+        end
+    else
+        if parameters.OptType == "Const"
+            phi_pen = [0, 0];
+            phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(90-recovery_percentage))).^2;
+            phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(90-recovery_percentage))).^2);
+            KPIs = [(-productivity+phi_pen(1)) 1*(SEC.*2.77778e-7+phi_pen(2))];
+        else
+            KPIs = [ -purity_percentage -recovery_percentage];
+        end
+    end
+
+    if parameters.OptType == "sampling"
+        KPIs = [purity_percentage, recovery_percentage, SEC, productivity,simTime,cycle];
+    end
+
+end
 
 %%
 if parameters.outputType == "plot"
