@@ -391,7 +391,16 @@ else
     max_no_Cycles = 200; % Maximum number of cycles to run to test CSS
 end
 parameters.y1_LPP = 0.15; % initialize LP composition
-options = odeset('RelTol', 1e-6, 'AbsTol', 1e-6, 'MaxOrder', 2);
+options = odeset('RelTol', 1e-5, 'AbsTol', 1e-5, 'MaxOrder', 2);
+
+% [delH1,~] = computeDSLHeatUnary(linspace(0,10e5,1000), 1, parameters.T_feed, parameters.PRef, parameters.TRef, parameters);
+% [~,delH2] = computeDSLHeatUnary(linspace(0,10e5,1000), 0, parameters.T_feed, parameters.PRef, parameters.TRef, parameters);
+% 
+% [q1vals, ~] = DSL(linspace(0,20e5,1000), 1, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
+% [~, q2vals] = DSL(linspace(0,20e5,1000), 0, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
+% 
+% parameters.heat1 = [q1vals' delH1'];
+% parameters.heat2 = [q2vals' delH2'];
 
 try
     while  cycle < max_no_Cycles && mean(temp_check) < 1  && parameters.p_H > parameters.p_I && parameters.p_I > parameters.p_L
@@ -424,7 +433,8 @@ try
         parameters.q2init = X0(3).*parameters.qRef;
 
         [q1max, ~] = DSL(X4(end,6), parameters.y1_in, X4(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-        parameters.loadingFraction = (X4(end,2)-X4(1,2))./((q1max-X4(1,2)));
+        [q10, ~] = DSL(X4(end,6), X4(end,1), X4(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
+        parameters.loadingFraction = (X4(end,2)-X4(1,2))./((q1max-q10));
 
 
         [t1, X1] = ode15s(@(t,X) odeFunc(t,X,parameters,'ads'), t_ads./(parameters.timeRef), X0, options); %t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
@@ -446,7 +456,8 @@ try
         % end
 
         [q1max, ~] = DSL(X1(end,6), parameters.y1_in, X1(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-        parameters.loadingFraction = (X1(end,2)-X1(1,2))./((q1max-X1(1,2)));
+        [q10, ~] = DSL(X4(end,6), X4(end,1), X4(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
+        parameters.loadingFraction = (X1(end,2)-q10)./((q1max-X1(1,2)));
         parameters.q1init = X1(end,2);
         parameters.q2init = X1(end,3);
         parameters.y1init = X1(end,1) ;
@@ -675,9 +686,9 @@ try
             process_indicators'
         end
 
-        if cycle > 11
+        if cycle > 6
             for i = 1:4
-                for k = 0:10
+                for k = 0:5
                     if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.02
                         temp_check(k+1) = 1;
                     else
@@ -686,6 +697,7 @@ try
                 end
             end
         end
+
 
         simTime = toc;
         if parameters.processType == "Resin"

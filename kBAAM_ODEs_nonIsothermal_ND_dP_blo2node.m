@@ -142,7 +142,8 @@ F_in  = 0;
 DL = 0.7 * parameters.Dm + abs(v_12) * parameters.rp;  % [m2/s]
 dz = L1/2 + L2/2;  % distance between node centres = L/2 (independent of node sizing)
 P_int_dim = (P1_dim + P2_dim) / 2;  % interface pressure for dispersive density
-F_disp = DL * A * e * P_int_dim / (R * T_dim) * (y1_1 - y1_2) / dz;
+% F_disp = DL * A * e * P_int_dim / (R * T_dim) * (y1_1 - y1_2) / dz;
+F_disp = 0;
 
 % ---- LDF kinetics: node 1 (at P1) ----
 [q1_star1, q2_star1] = getEq(P1, y1_1, T, PRef, TRef, parameters);
@@ -160,14 +161,14 @@ dq2dt_2 = tRef_qRef * k2_2 * (q2_star2 - q2_2 * qRef);
 f = zeros(10, 1);
 
 % Node 1: y1 balance (F_in=0, convective outflow F_12, dispersive loss F_disp)
-f(1) = R * T_dim / P1_dim * (0 - y1_1 * F_12 - 0) / (e * V_node1);
+f(1) = R * T_dim / P1_dim * (0 - y1_1 * F_12 - F_disp) / (e * V_node1);
 
 % Node 1: adsorbed phase
 f(2) = dq1dt_1;
 f(3) = dq2dt_1;
 
 % Node 2: y1 balance (convective inflow F_12 at y1_1, dispersive gain F_disp, outflow F_out at y1_2)
-f(4) = R * T_dim / P2_dim * (y1_1 * F_12 + 0 - y1_2 * F_out) / (e * V_node2);
+f(4) = R * T_dim / P2_dim * (y1_1 * F_12 + F_disp - y1_2 * F_out) / (e * V_node2);
 
 % Node 2: adsorbed phase
 f(5) = dq1dt_2;
@@ -255,14 +256,18 @@ if ~parameters.isIsothermal
     y1_avg = f_node * y1_1 + (1 - f_node) * y1_2;
     P_avg  = f_node * P1 + (1 - f_node) * P2;  % avg for delH evaluation
     if parameters.SSLSTA
-        [delH1, delH2] = computeSSLSTAHeatBinaryBT(P_avg*PRef/1e5, y1_avg, T_dim, [parameters.SSLSTA1'; parameters.SSLSTA2']);
+        [delH1_1, delH2_1] = computeSSLSTAHeatBinaryBT(P_avg*PRef/1e5, y1_avg, T_dim, [parameters.SSLSTA1'; parameters.SSLSTA2']);
+        delH1_2 = delH1_1;
+        delH2_2 = delH2_1;
     else
         [delH1_1, delH2_1] = computeDSLHeatUnary(P1, y1_1, T, PRef, TRef, parameters);
         [delH1_2, delH2_2] = computeDSLHeatUnary(P2, y1_2, T, PRef, TRef, parameters);
     end
     if parameters.isResin
-        delH1 = -parameters.delUb_1;
-        delH2 = -parameters.delUb_2;
+        delH1_1 = -parameters.delUb_1;
+        delH2_1 = -parameters.delUb_2;
+        delH1_2 = delH1_1;
+        delH2_2 = delH2_1;
     end
 
     % ---- Row 7: shared energy balance ----

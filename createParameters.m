@@ -48,24 +48,25 @@ function parameters = createParameters
 % Particle voidage, epsilon_p [-]
 % Molecular diffusivity of gas, Dm [m2/s]
 % Tortuosity, tau [-]
-parameters.adsorbentName = "Z13X_AW_2022";
-parameters.qsb_1 = 3.09;
-parameters.qsd_1 = 2.54;
-parameters.bo_1 = 8.65e-7;
-parameters.do_1 = 2.63e-8;
-parameters.delUb_1 = -3.66e4;
-parameters.delUd_1 = -3.57e4;
-parameters.qsb_2 = 5.84;
-parameters.qsd_2 = 0;
-parameters.bo_2 = 2.50e-7;
-parameters.do_2 = 0;
-parameters.delUb_2 = -1.58e4;
-parameters.delUd_2 = 0;
+
+parameters.adsorbentName = "13XH_T";
+parameters.qsb_1 = 2.9266;
+parameters.qsd_1 = 3.2808;
+parameters.bo_1 = 2.8812e-07;
+parameters.do_1 = 1.2004e-06;
+parameters.delUb_1 = -3.0854e+04;
+parameters.delUd_1 = -3.7087e+04;
+parameters.qsb_2 = 2.9266;
+parameters.qsd_2 = 3.2808;
+parameters.bo_2 = 7.6833e-07;
+parameters.do_2 = 5.3394e-06;
+parameters.delUb_2 = -1.3012e+04;
+parameters.delUd_2 = -1.5764e+04;
+parameters.rho_s = 1130;
 parameters.cp_g = 30.7;
 parameters.cp_a = parameters.cp_g;
 parameters.cp_w = 502;
 parameters.cp_s = 1070;
-parameters.rho_s = 1130;
 parameters.rho_w = 7800;
 parameters.rp = 1e-3;
 parameters.V_column = 0.066;
@@ -113,6 +114,5 @@ parameters.OptType = "Unc";
 parameters.outputType = "plot";
 
 % Save parameters structure in AdsorbentFfiles folder
-save(['AdsorbentFiles/',convertStringsToChars(strcat(parameters.adsorbentName)),'.mat'])
-
+save(['AdsorbentFiles/',convertStringsToChars(strcat(parameters.adsorbentName)),'.mat'],'parameters')
 end

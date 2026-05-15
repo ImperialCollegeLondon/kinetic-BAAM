@@ -723,9 +723,9 @@ options = odeset('RelTol', 1e-6, 'AbsTol', 1e-6, 'MaxOrder', 2);
             process_indicators'
         end
 
-        if cycle > 11
+        if cycle > 6
             for i = 1:4
-                for k = 0:10
+                for k = 0:5
                     if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.02
                         temp_check(k+1) = 1;
                     else

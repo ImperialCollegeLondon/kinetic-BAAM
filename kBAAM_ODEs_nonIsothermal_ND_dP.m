@@ -111,10 +111,9 @@ switch stepName
             [q1_starIn, q2_starIn] = getEquilibriumLoadings(P, parameters.y1_in, T, PRef, TRef, parameters);
             [q1_start, q2_start]   = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
             [k1In, ~]  = LDFCoefficient(P_dim, y1, T_dim, q1_starIn, q2_starIn, parameters);
-            [k1t, k2t]   = LDFCoefficient(P_dim, y1, T_dim, q1_start,  q2_start,  parameters);
+            [~, k2t]   = LDFCoefficient(P_dim, y1, T_dim, q1_start,  q2_start,  parameters);
+
             dq1dt = tRef_qRef .* k1In .* (q1_starIn - q1.*qRef);
-            % dq1dt = (1-parameters.loadingFraction).*tRef_qRef .* k1In .* (q1_starIn - q1.*qRef) ...
-            %     + parameters.loadingFraction.*tRef_qRef .* k1t .* (q1_start - q1.*qRef);
             dq2dt = tRef_qRef .* k2t  .* (q2_start  - q2.*qRef);
         end
 
@@ -269,6 +268,8 @@ if ~parameters.isIsothermal
     else
         [delH1, ~] = computeDSLHeatUnary(P, y1val, T, PRef, TRef, parameters);
         [~, delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
+
+        % [delH1,delH2] = computeQHeatUnary(P, y1, T, q1, q2, PRef, TRef, qRef, parameters);
     end
 
     if parameters.isResin
