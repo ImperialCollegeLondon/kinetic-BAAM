@@ -25,6 +25,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function run_NSGA(parameters)
 
+if ~isfield(parameters,'twoNode')
+    parameters.twoNode = 0;
+end
+
 % Load model onto path
 addpath(genpath(pwd))
 
@@ -45,11 +49,11 @@ if parameters.processType == "PVSA"  % Optimization for fixed adsorbent defined 
 elseif parameters.processType == "VSA"  % Optimization for fixed adsorbent defined in parameters using VSA
 
     if parameters.amine
-        lb = [0.3.*0.37,  (0.021e5),    100,    20,    30,  (0.02e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
+        lb = [0.2.*0.37,  (0.021e5),    100,    20,    30,  (0.02e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
         ub = [3.*0.37,    (0.9e5),     3e4,  1200,  3.5e4,  (0.5e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
     else
         lb = [0.3.*0.37,  (0.021e5),    30,    30,    30,  (0.02e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
-        ub = [3.*0.37,    (0.9e5),     200,  300,  300,  (0.5e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
+        ub = [2.*0.37,    (0.9e5),     300,  300,  300,  (0.5e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
     end
     parameters.xRef = ub;
     % Linear inequality constraints: none
@@ -63,12 +67,51 @@ elseif parameters.processType == "AdsorbentVSA" % Reverse engineer adsorbent ass
     A = [0, 0, 0, 0, 0, -1, 1];
     b = 0;
 elseif parameters.processType == "AdsorbentPVSA" % Reverse engineer adsorbent assuming equal pre-exponent for each gas using PVSA
-    lb = [log10(0.02e5), 100,  40,  0.5, 1e-6, 10e3, 10e3, log10(1e5)];   % Lower bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b, p_H]
-    ub = [log10(10e5),    3000, 300, 8,   1e-3, 45e3, 45e3, log10(10e5)];  % Upper bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b, p_H]]
-    parameters.xRef = ub;
-    % Linear inequality constraints: |delU2| < |delU1| & P_blo < P_ads
-    A = [1, 0, 0, 0, 0, -1, 1,-1];
-    b = 0;
+    % lb = [log10(0.02e5), 100,  40,  0.5, 1e-6, 10e3, 10e3, log10(1e5)];   % Lower bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b, p_H]
+    % ub = [log10(10e5),    3000, 300, 8,   1e-3, 45e3, 45e3, log10(10e5)];  % Upper bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b, p_H]]
+    % parameters.xRef = ub;
+    % % Linear inequality constraints: |delU2| < |delU1| & P_blo < P_ads
+    % A = [1, 0, 0, 0, 0, -1, 1,-1];
+    % b = 0;
+
+
+    lb = [0.2.*0.37,  (0.13e5),    30,    30,    30,    (1e5) 2 -7 -7 20e3 5e3 300];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac, p_H, qsb1/qsb2, b01, b02, delU1, delU2, eho_s]
+    ub = [2.*0.37,    (9e5),     300,  300,  300,    (10e5) 10 -2 -2 50e3 30e3 1600];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac, p_H, qsb1/qsb2, b01, b02, delU1, delU2, eho_s]
+
+    % lb = [0.1.*0.37,  (0.13e5),    20,    30,    30,  (0.02e5),  (1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
+    % ub = [3.*0.37,    (3e5),     300,  300,  300,  (0.5e5),  (10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
+
+
+    parameters.xRef = ones(1,length(ub));
+    % Linear inequality constraints: P_blo < P_ads    
+    %                                P_evac < P_blo
+    A = [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0 , 0 ;
+        0, 1, 0, 0, 0,  -1, 0, 0, 0, 0, 0 , 0 ];
+    b = [0;0];
+
+elseif parameters.processType == "AdsorbentPVSADSL" % Reverse engineer adsorbent assuming equal pre-exponent for each gas using PVSA
+    % lb = [log10(0.02e5), 100,  40,  0.5, 1e-6, 10e3, 10e3, log10(1e5)];   % Lower bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b, p_H]
+    % ub = [log10(10e5),    3000, 300, 8,   1e-3, 45e3, 45e3, log10(10e5)];  % Upper bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b, p_H]]
+    % parameters.xRef = ub;
+    % % Linear inequality constraints: |delU2| < |delU1| & P_blo < P_ads
+    % A = [1, 0, 0, 0, 0, -1, 1,-1];
+    % b = 0;
+
+
+    lb = [0.2.*0.37,  (0.13e5),    30,    30,    30,    (1e5)  1 0.1 -7 -7 -7 20e3 20e3 5e3  600];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac, p_H, qsb, qsd, b01, d01, b02/d02, delUb1, delUd1, delU2, eho_s]
+    ub = [2.*0.37,    (9e5),     300,  300,  300,      (10e5)  10   10 -2 -2 -2 50e3 50e3 20e3 1600];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac, p_H, qsb, qsd, b01, d01, b02/d02, delUb1, delUd1, delU2, eho_s]
+
+    % lb = [0.1.*0.37,  (0.13e5),    20,    30,    30,  (0.02e5),  (1e5)];   % Lower bounds [v_in, p_I, t_ads, t_blo, t_evac]
+    % ub = [3.*0.37,    (3e5),     300,  300,  300,  (0.5e5),  (10e5)];  % Upper bounds [v_in, p_I, t_ads, t_blo, t_evac]
+
+
+    parameters.xRef = ones(1,length(ub));
+    % Linear inequality constraints: P_blo < P_ads    
+    %                                P_evac < P_blo
+    A = [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0 , 0  0, 0 , 0 ;
+        0, 1, 0, 0, 0,  -1, 0, 0, 0, 0, 0 , 0  0, 0 , 0 ];
+    b = [0;0];
+
 elseif parameters.processType == "AdsorbentVSAb0" % Reverse engineer adsorbent assuming equal deltaU for each gas using VSA
     lb = [log10(0.02e5), 100,  40,  0.5, 1e-6, 10e3, 10e3];  % Lower bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b]
     ub = [log10(0.9e5),  3000, 300, 8,   1e-3, 45e3, 45e3];  % Upper bounds [p_I, t_ads, t_blo, qsb, b0, delU1b, delU2b]]
@@ -156,10 +199,12 @@ if parameters.processType == "Resin"
 
             parameters.outputType = "opt"; % Output type needs to be "opt"
             options = optimoptions(@gamultiobj, 'Display', 'iter', 'Generations', ngens, 'PopulationSize', pop_size,'UseParallel',true,'InitialPopulationMatrix',initPop,'CrossoverFraction',0.85,'ParetoFraction',0.35,'PlotFcn','gaplotpareto','MigrationInterval',5); % ,'PlotFcn','gaplotpareto' GA options
-
-
-            [x, fval] = gamultiobj(@(theta) kBAAM_Outputs_nonIsothermal_dP(parameters,theta), nVars, A, b, [], [], lb./parameters.xRef, ub./parameters.xRef, options); % Optimize objectives using GA
-
+        
+            if parameters.twoNode
+                [x, fval] = gamultiobj(@(theta) kBAAM_Outputs_nonIsothermal_dP_2nodeEvac(parameters,theta), nVars, A, b, [], [], lb./parameters.xRef, ub./parameters.xRef, options); % Optimize objectives using GA
+            else
+                [x, fval] = gamultiobj(@(theta) kBAAM_Outputs_nonIsothermal_dP(parameters,theta), nVars, A, b, [], [], lb./parameters.xRef, ub./parameters.xRef, options); % Optimize objectives using GA
+            end
             save(['matFiles/',parameters.fileName,'.mat'])
         end
     end
@@ -168,8 +213,13 @@ else
     %% Solve optimisation problem using genetic algorithm
     % Genetic algorithm settings
     nVars = length(lb);
-    ngens = 80;     % Maximum number of generations
-    pop_size = 140; % Number of members in population of each generation [-]
+    ngens = 120;     % Maximum number of generations
+    pop_size = 300; % Number of members in population of each generation [-]
+
+    if parameters.processType == "AdsorbentPVSA"
+    ngens = 90;     % Maximum number of generations
+    pop_size = 300; % Number of members in population of each generation [-]
+    end
 
     rng default
     X0 = lhsdesign(pop_size,nVars); % Latin hypercube sampling to generate initial population matrix

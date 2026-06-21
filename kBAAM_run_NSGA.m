@@ -23,12 +23,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 addpath(genpath(pwd))
-addpath(genpath('../PVSA_opt-main'))
 
 clear; close all; clc;
 
 addpath(genpath(pwd))
-addpath(genpath('../PVSA_opt-main'))
 
 adsFiles = ["UTSA-16_VB_2019";
     "Mg-MOF-74_VB_2019";
@@ -47,63 +45,75 @@ adsFiles = ["13XH";
     "ACRB3";
     "CALF20"];
 
-for jj = 1:length(adsFiles)
+for jj = 1
     load(adsFiles(jj))
     %%
-    parameters.rp = 1e-3;
-    parameters.outputType = "opt";
-    parameters.plot0D = 0;
-    parameters.plotVideo = 0;
-    parameters.layered =  0;
+    parameters.adsorbentName = adsFiles(jj);
+    parameters.modelType = "nonisothermal";
+
+        parameters.outputType = "Opt";
+    % parameters.processType = "PVSA";
+
+
+    parameters.modelType = "nonisothermal";
     parameters.Lbyr = 7;
     parameters.pressureDrop = 1;
     parameters.equilibrium = 0;
     parameters.cCSTR = 0;
-    parameters.testBT = 0;
-    parameters.testEvac =  0;
-    parameters.normPlot = 0;
-    parameters.plot0D = 0;
-    parameters.rigid = 1;
-    parameters.plotVideo = 0;
-    parameters.layered =  0;
-    parameters.adsorbentName = adsFiles(jj);
-    parameters.modelType = "nonisothermal";
+    parameters.p_L = 0.02e5;
+    parameters.V_column = 0.066;
+    parameters.twoNode = 0;
+    parameters.adsorbentName = "Hypo";
+
 
 
     parameters.pressType = "FP";
     
-    parameters.processType = "PVSA";
+    % parameters.processType = "PVSA";
+        parameters.processType = "AdsorbentPVSADSL";
     parameters.OptType = "Const"; 
     run_NSGA(parameters);
     parameters.OptType = "Unc";
     run_NSGA(parameters);
 
+    % % 
+    % % 
+    % % parameters.pressType = "LPP";
+    % % 
+    % % % parameters.processType = "PVSA";
+    % %     parameters.processType = "AdsorbentPVSA";
+    % % parameters.OptType = "Const"; 
+    % % run_NSGA(parameters);
+    % % parameters.OptType = "Unc";
+    % % run_NSGA(parameters);
+    % % 
 
-    parameters.processType = "VSA";
-
-    parameters.OptType = "Const"; 
-    run_NSGA(parameters);
-    parameters.OptType = "Unc";
-    run_NSGA(parameters);
-
-
-
-
-    parameters.pressType = "LPP";
-    
-    parameters.processType = "PVSA";
-    parameters.OptType = "Const"; 
-    run_NSGA(parameters);
-    parameters.OptType = "Unc";
-    run_NSGA(parameters);
-
-
-    parameters.processType = "VSA";
-
-    parameters.OptType = "Const"; 
-    run_NSGA(parameters);
-    parameters.OptType = "Unc";
-    run_NSGA(parameters);
+    % parameters.processType = "VSA";
+    %     parameters.processType = "AdsorbentPVSA";
+    % 
+    % parameters.OptType = "Const"; 
+    % run_NSGA(parameters);
+    % parameters.OptType = "Unc";
+    % run_NSGA(parameters);
+    % 
+    % 
+    % % 
+    % 
+    % parameters.pressType = "LPP";
+    % 
+    % parameters.processType = "PVSA";
+    % parameters.OptType = "Const"; 
+    % run_NSGA(parameters);
+    % parameters.OptType = "Unc";
+    % run_NSGA(parameters);
+    % 
+    % 
+    % parameters.processType = "VSA";
+    % 
+    % parameters.OptType = "Const"; 
+    % run_NSGA(parameters);
+    % parameters.OptType = "Unc";
+    % run_NSGA(parameters);
 end
 
 % %%
