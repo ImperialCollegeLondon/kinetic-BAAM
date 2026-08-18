@@ -88,7 +88,7 @@ else
 
     % Per-node volumes based on adsorption loading fraction.
     % Clamp to [0.1, 0.95] to prevent degenerate small nodes that cause excessive stiffness.
-    f_node = 1-max(0.05, min(0.95, parameters.loadingFraction));
+    f_node = 1-max(0.03, min(0.97, parameters.loadingFraction));
 end
 % ---- Unpack parameters ----
 tRef      = parameters.timeRef;
@@ -152,12 +152,7 @@ dq1dt_1 = tRef_qRef * k1_1 * (q1_star1 - q1_1 * qRef);
 dq2dt_1 = tRef_qRef * k2_1 * (q2_star1 - q2_1 * qRef);
 
 % ---- LDF kinetics: node 2 (at P2) ----
-% if string(stepName) == "blo"
-% [q1_star2, q2_star2] = getEq(P2, max(y1_1,y1_2), T, PRef, TRef, parameters);
-% [~, q2_star2] = getEq(P2, y1_2, T, PRef, TRef, parameters);
-% else
 [q1_star2, q2_star2] = getEq(P2, y1_2, T, PRef, TRef, parameters);
-% end
 [k1_2, k2_2] = LDFCoefficient(P2_dim, y1_2, T_dim, q1_star2, q2_star2, parameters);
 dq1dt_2 = tRef_qRef * k1_2 * (q1_star2 - q1_2 * qRef);
 dq2dt_2 = tRef_qRef * k2_2 * (q2_star2 - q2_2 * qRef);

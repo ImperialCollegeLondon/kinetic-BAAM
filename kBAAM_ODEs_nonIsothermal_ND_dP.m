@@ -61,7 +61,8 @@
 function dXdt = kBAAM_ODEs_nonIsothermal_ND_dP(t,X,parameters,stepName)
 
 % Unpack state variables
-y1 = max(1e-11,min(1,X(1)));   % mole fraction of component 1 [-]
+% y1 = max(1e-11,min(1,X(1)));   % mole fraction of component 1 [-]
+y1 = X(1);   % mole fraction of component 1 [-]
 q1 = X(2);   % dimensionless adsorbed amount of component 1 [-]
 q2 = X(3);   % dimensionless adsorbed amount of component 2 [-]
 T  = max(X(4),1e-11);   % dimensionless temperature [-]
@@ -93,6 +94,8 @@ two_hin   = parameters.two_hin_rin_e;     % 2*h_in/(r_in*e)
 P_dim = P .* PRef;
 T_dim = T .* TRef;
 
+T_a = TRef;
+
 Qheat = 0; % external heat input [W/m3] (only nonzero in evac with heating)
 
 % ---- Step-specific: equilibrium, kinetics, and flow ----
@@ -110,11 +113,17 @@ switch stepName
             % Default mode: CO2 uses feed-side equilibrium, N2 uses outlet equilibrium
             [q1_starIn, q2_starIn] = getEquilibriumLoadings(P, parameters.y1_in, T, PRef, TRef, parameters);
             [q1_start, q2_start]   = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
-            [k1In, ~]  = LDFCoefficient(P_dim, y1, T_dim, q1_starIn, q2_starIn, parameters);
-            [~, k2t]   = LDFCoefficient(P_dim, y1, T_dim, q1_start,  q2_start,  parameters);
+            [k1In, k2In]  = LDFCoefficient(P_dim, y1, T_dim, max(0,q1_starIn), max(0,q2_starIn), parameters);
+            [k1t, k2t]   = LDFCoefficient(P_dim, y1, T_dim, max(q1_start,0), max(q2_start,0),  parameters);
 
-            dq1dt = tRef_qRef .* k1In .* (q1_starIn - q1.*qRef);
-            dq2dt = tRef_qRef .* k2t  .* (q2_start  - q2.*qRef);
+            % For light-product (kinetic) separation, comp 1 adsorbs at the outlet end.
+            % Use outlet equilibrium so the driving force vanishes as y1 -> 0,
+            % preserving non-negativity of the mole fraction.
+            loadFrac = 1-((q1.*qRef-q1_starIn)./(parameters.q1init-q1_starIn));
+            loadFrac =  ((parameters.q1init-q1.*qRef)./(parameters.q1init-q1_starIn));
+            dq1dt = tRef_qRef .* k1In    .* (q1_starIn - q1.*qRef);
+            dq2dt = min( tRef_qRef .* k2In  .* (loadFrac.*q2_starIn + (1-loadFrac).*q2_start - q2.*qRef));
+            dq2dt = tRef_qRef .* k2t  .* (max(q2_start,q2_starIn)  - q2.*qRef);
         end
 
         % Inlet flow from feed specification: F_in = v_in*A*e * P_in/(R*T_feed)
@@ -124,9 +133,41 @@ switch stepName
 
         % Outlet flow from Darcy's law at product end
         v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
-        Fout  = P_out *PRef .* A .* e ./ (R .* T.*TRef) .* v_out; 
-        % Fout  = max(0,Fout);
+        Fout  = P_out .* PRef .* A .* e ./ (R .* T.*TRef) .* v_out;
 
+    case 'purge'
+        P_out = parameters.p_L ./ PRef;
+
+        parameters.y1_in = max(1e-11,parameters.y1LPft(t));
+
+        if parameters.cCSTR
+            % cCSTR mode: both components use outlet composition equilibrium
+            [q1_start, q2_start] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+            [k1t, k2t] = LDFCoefficient(P_dim, y1, T_dim, q1_start, q2_start, parameters);
+            dq1dt = tRef_qRef .* k1t .* (q1_start - q1.*qRef);
+            dq2dt = tRef_qRef .* k2t .* (q2_start - q2.*qRef);
+        else
+            % Default mode: CO2 uses feed-side equilibrium, N2 uses outlet equilibrium
+            [q1_starIn, q2_starIn] = getEquilibriumLoadings(P, parameters.y1_in, T, PRef, TRef, parameters);
+            [q1_start, q2_start]   = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+            [k1In, ~]  = LDFCoefficient(P_dim, y1, T_dim, max(q1_start,q1_starIn), max(q2_start,q2_starIn), parameters);
+            [k1t, k2t]   = LDFCoefficient(P_dim, y1, T_dim, max(q1_start,q1_starIn), max(q2_start,q2_starIn),  parameters);
+
+
+            dq1dt = tRef_qRef .* k1In .* (max(q1_start,q1_starIn) - q1.*qRef);
+            dq2dt = tRef_qRef .* k2t  .* (max(q2_start,q2_starIn)  - q2.*qRef);
+        end
+
+        % Inlet flow from feed specification: F_in = v_in*A*e * P_in/(R*T_feed)
+        % where P_in = 2*P_avg - P_out (linear pressure profile)
+        F_in  = parameters.volFlowPurge .* (2.*P - P_out) .* PRef ./ (R .*  TRef);
+
+
+        y1_in = parameters.y1_in;
+
+        % Outlet flow from Darcy's law at product end
+        v_out = (2/L) .* darcyK .* (P - P_out) .* PRef;
+        Fout  = P_dim .* A .* e ./ (R .* T.*TRef) .* v_out;
     case 'blo'
         P_out = parameters.P_blo(t.*tRef) ./ PRef;
 
@@ -157,10 +198,16 @@ switch stepName
 
         % External heating (temperature swing)
         if parameters.heating
-            if T_dim < parameters.Theat
-                Qheat = parameters.heatPowerDensity .* (parameters.Theat - T_dim) ...
-                    ./ (parameters.Theat - TRef) ./ (parameters.r_out - parameters.r_in);
+            if parameters.elecHeating
+                if T_dim < parameters.Theat
+                    Qheat = parameters.heatPowerDensity .* (parameters.Theat - T_dim) ...
+                        ./ (parameters.Theat - TRef).*2.*parameters.r_out ./ (parameters.r_out.^2 - parameters.r_in.^2);
+                end
+            else
+                Qheat = 0;
+                T_a = parameters.Theat;
             end
+
         end
 
         F_in  = 0;
@@ -173,17 +220,18 @@ switch stepName
     case 'pres'
         P_out = parameters.P_press(t.*tRef) ./ PRef;
 
-        % Equilibrium at instantaneous composition
-        [q1_star, q2_star] = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
-
-        [k1, k2] = LDFCoefficient(P_dim, y1, T_dim, q1_star, q2_star, parameters);
-        dq1dt = tRef_qRef .* k1 .* (q1_star - q1.*qRef);
-        dq2dt = tRef_qRef .* k2 .* (q2_star - q2.*qRef);
+        [q1_starIn, q2_starIn] = getEquilibriumLoadings(P, parameters.y1_in, T, PRef, TRef, parameters);
+        [q1_start, q2_start]   = getEquilibriumLoadings(P, y1, T, PRef, TRef, parameters);
+        [k1In, ~]  = LDFCoefficient(P_dim, y1, T_dim, max(q1_start,q1_starIn), max(q2_start,q2_starIn), parameters);
+        [k1t, k2t]   = LDFCoefficient(P_dim, y1, T_dim, max(q1_start,q1_starIn), max(q2_start,q2_starIn),  parameters);
 
         % Inlet flow from Darcy (gas enters column)
         v_in = (2/L) .* darcyK .* (P_out - P) .* PRef;
         F_in = P_out.*PRef .* A .* e ./ (R .* TRef) .* v_in;
         Fout = 0;
+
+            dq1dt = tRef_qRef .* k1In .* (q1_start - q1.*qRef);
+        dq2dt = tRef_qRef .* k2t  .* (max(q2_start,q2_starIn)  - q2.*qRef);
 
         if parameters.pressType == "LPP"
             y1_in = parameters.y1_LPP;
@@ -205,15 +253,15 @@ f(3) = dq2dt;
 % Row 4: Energy balance — flow enthalpy + wall heat transfer
 if ~parameters.isIsothermal
     f(4) = cpg_eV .* (F_in.*TRef - Fout.*T_dim) ...
-         - two_hin .* (T_dim - Tw.*TwRef);
+        - two_hin .* (T_dim - Tw.*TwRef);
 end
 
 % Row 5: Wall energy balance
 if ~parameters.isIsothermal
     f(5) = parameters.wall_prefactor .* ...
         (+parameters.wall_coeff1 .* (T_dim - Tw.*TwRef) ...
-         -parameters.wall_coeff2 .* (Tw.*TwRef - TRef) ...
-         + Qheat);
+        -parameters.wall_coeff2 .* (Tw.*TwRef - T_a) ...
+        + Qheat);
 end
 
 % Row 6: Overall material balance — flow source only
@@ -256,7 +304,7 @@ nz=nz+1; ii(nz)=3; jj(nz)=3; vv(nz) = 1;
 if ~parameters.isIsothermal
     % Effective heat capacity [J/m3K]
     Ceff = Ab * (parameters.rho_s * parameters.cp_s + cp_a * parameters.rho_s * qRef * (q1 + q2));
-    
+
     if string(stepName) == "ads" && ~parameters.cCSTR
         y1val = parameters.y1_in;
     else
@@ -268,8 +316,6 @@ if ~parameters.isIsothermal
     else
         [delH1, ~] = computeDSLHeatUnary(P, y1val, T, PRef, TRef, parameters);
         [~, delH2] = computeDSLHeatUnary(P, y1, T, PRef, TRef, parameters);
-
-        % [delH1,delH2] = computeQHeatUnary(P, y1, T, q1, q2, PRef, TRef, qRef, parameters);
     end
 
     if parameters.isResin

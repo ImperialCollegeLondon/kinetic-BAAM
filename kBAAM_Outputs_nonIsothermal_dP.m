@@ -117,6 +117,15 @@ if ~isfield(parameters,'LightProd')
     parameters.LightProd = 0;
 end
 
+if ~isfield(parameters,'elecHeating')
+    parameters.elecHeating = 1;
+end
+
+
+if ~isfield(parameters,'kineticSeparation')
+    parameters.kineticSeparation = 0;
+end
+
 
 %% Time durations of adsorption, blowdown, evacuation and pressurization steps
 if nargin == 2
@@ -316,8 +325,13 @@ end
 
 if parameters.heating
     parameters.heatPowerDensity = 5e3; % [W/m2]
-    parameters.h_in = 8.6*3;
-    parameters.Theat = parameters.Theat+6;
+    if parameters.elecHeating
+        parameters.h_in = 8.6*3;
+        parameters.Theat = parameters.Theat+6;
+    else
+        parameters.h_in = 3;
+        parameters.h_out = 26;
+    end
 else
     parameters.Theat = 0;
 end
@@ -426,15 +440,6 @@ end
 parameters.y1_LPP = 0.15; % initialize LP composition
 options = odeset('RelTol', 1e-5, 'AbsTol', 1e-5, 'MaxOrder', 2);
 
-% [delH1,~] = computeDSLHeatUnary(linspace(0,10e5,1000), 1, parameters.T_feed, parameters.PRef, parameters.TRef, parameters);
-% [~,delH2] = computeDSLHeatUnary(linspace(0,10e5,1000), 0, parameters.T_feed, parameters.PRef, parameters.TRef, parameters);
-% 
-% [q1vals, ~] = DSL(linspace(0,20e5,1000), 1, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-% [~, q2vals] = DSL(linspace(0,20e5,1000), 0, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-% 
-% parameters.heat1 = [q1vals' delH1'];
-% parameters.heat2 = [q2vals' delH2'];
-
 try
     while  cycle < max_no_Cycles && mean(temp_check) < 1  && parameters.p_H > parameters.p_I && parameters.p_I > parameters.p_L
 
@@ -446,8 +451,7 @@ try
 
         [t4, X4] = ode15s(@(t,X) odeFunc(t,X,parameters,'pres'), t_press./(parameters.timeRef), X0, options);%t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
         t4 = t4.*parameters.timeRef;
-        X4(X4<0) = 0;
-        X4(X4(:,1)>1,1) = 1;
+
         if parameters.testBT && ~parameters.testEvac
             parameters.P_initH = parameters.p_H+150./4.*1./parameters.rp.^2.*((1-parameters.e_bed)./parameters.e_bed).^2.*1.72e-5.*parameters.v_in.*parameters.L./1;
             y1Init = 0.000001; % initial mole fraction of component 1 in bed [-]
@@ -472,8 +476,7 @@ try
 
         [t1, X1] = ode15s(@(t,X) odeFunc(t,X,parameters,'ads'), t_ads./(parameters.timeRef), X0, options); %t1 is the time point at which the solution is evaluated, X1 is the solution states for adsorption step
         t1 = t1.*parameters.timeRef;
-        X1(X1<0) = 0;
-        X1(X1(:,1)>1,1) = 1;
+
         X0 = X1(end,:)';
         X1 = X1.*parameters.refVals;
         if parameters.processType == "Resin" || parameters.processType == "ResinSens"
@@ -482,11 +485,6 @@ try
                 t_ads  = 0:dt:parameters.t_ads;
             end
         end
-
-        % if parameters.pressureDrop
-        %     parameters.P_initH = X1(end,6);
-        %     parameters.P_blo = @(t)parameters.p_I+(parameters.P_initH-parameters.p_I)*exp(-parameters.lambda*t); % pressure profile for blowdown
-        % end
 
         [q1max, ~] = DSL(X1(end,6), parameters.y1_in, X1(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
         [q10, ~] = DSL(X4(end,6), X4(end,1), X4(end,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
@@ -643,7 +641,7 @@ try
             % Pressurisation inlet flowrate [mol/s]: Fout=0 (outlet valve closed)
             v_outP = -(2./parameters.L) .* parameters.darcyK .* (X4(:,6) - parameters.P_press(t4));
             Fin_pres  = parameters.P_press(t4) .* parameters.A_in .* parameters.e_bed ./ (Rg .* parameters.T_feed) .* v_outP;
-        elseif parameters.pressureDrop
+        elseif parameters.pressureDrop && ~parameters.amine
             v_outB = (2./parameters.L) .* parameters.darcyK .* (X2(:,6) - parameters.P_blo(t2));
             Fout_bd  = X2(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X2(:,4)) .* v_outB;
             Fout_bd(Fout_bd<0) = 0; % enforce non-negative
@@ -662,8 +660,6 @@ try
             Fout_bd = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X2(:,2),dt) + gradient(X2(:,3),dt)) ...
                 - (parameters.e_bed ./ (Rg.*X2(:,4))) .* gradient(X2(:,6),dt) .* parameters.V_column ...
                 + (parameters.e_bed .* X2(:,6)./ (Rg.*X2(:,4).^2)) .* gradient(X2(:,4),dt) .* parameters.V_column ;
-            % v_outB = (2./parameters.L) .* parameters.darcyK .* (X2(:,6) - parameters.P_blo(t2));
-            % Fout_bd  = X2(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X2(:,4)) .* v_outB;
             Fout_bd(Fout_bd<0) = 0; % enforce non-negative
             % Evacuation outlet flowrate [mol/s]: Fin=0; dP/dt compression term suppressed (pump-dominated)
             Fout_evac = 0 - (1 - parameters.e_bed) .* parameters.V_column * parameters.rho_s .* (gradient(X3(:,2),dt) + gradient(X3(:,3),dt)) ...
@@ -676,9 +672,9 @@ try
 
         end
 
-        if parameters.LightProd
-        parameters.y1_LPP = (mol_1_out_ads + trapz(t2,Fout_bd.*(1-y1_bd_out)))./(moltot_out_ads+trapz(t2,Fout_bd)); % avg CO2 mole fraction in LPP gas [-]
-        end
+        % if parameters.LightProd
+        % parameters.y1_LPP = (mol_1_out_ads + trapz(t2,Fout_bd.*(1-y1_bd_out)))./(moltot_out_ads+trapz(t2,Fout_bd)); % avg CO2 mole fraction in LPP gas [-]
+        % end
 
         if parameters.pressType == "LPP"
             mole_LP_recycle = n_1_pres-n_1_presInit;
@@ -688,8 +684,6 @@ try
             mole_LP_recycle = 0;
             mole_LP_recycle_2 = 0;
             recovery_percentage = 100 * (n_1_bd - n_1_evac) / ((n_1_ads - n_1_evac + mol_1_out_ads));
-            % recovery_percentage = 100 * (trapz(t3,Fout_evac.*X3(:,1))) / ((trapz(t3,Fout_evac.*X3(:,1)) +trapz(t2,Fout_bd.*y1_bd_out) + mol_1_out_ads));
-            % recovery_percentage = 100 * (n_1_bd - n_1_evac) / ((trapz(t1,Fin_ads.*parameters.y1_in) + trapz(t4,Fin_pres.*parameters.y1_in)));
         end
         purity_percentage = 100 * (n_1_bd - n_1_evac) / (n_1_bd - n_1_evac + max(0,n_2_bd - n_2_evac));
 
@@ -701,8 +695,12 @@ try
         P_atm = 101325; % Atmospheric pressure [Pa]
 
         if parameters.heating
-            heatFlag = X3(:,4) < parameters.Theat;
-            Qheat = trapz(t3,parameters.heatPowerDensity.*(parameters.Theat-X3(:,4))./(parameters.Theat-parameters.T_feed).*pi*parameters.r_out.*2.*parameters.L.*heatFlag); % external heat flux if heating is used
+            if parameters.elecHeating
+                heatFlag = X3(:,4) < parameters.Theat;
+                Qheat = trapz(t3,parameters.heatPowerDensity.*(parameters.Theat-X3(:,4))./(parameters.Theat-parameters.T_feed).*pi*parameters.r_out.*2.*parameters.L.*heatFlag); % external heat flux if heating is used
+            else
+                Qheat = trapz(t3,parameters.h_out*2.*pi*parameters.r_out.*parameters.L.*(X3(:,5)-X3(:,4))); % external heat flux if heating is used
+            end
             EC_HEAT = Qheat;
         else
             EC_HEAT = 0;
@@ -743,7 +741,6 @@ try
         F_cycleIn = [Fin_ads;zeros(length(t2),1);zeros(length(t3),1);Fin_pres];
 
         mol1in  = trapz(t_cycle,F_cycleIn.*1);
-        % mol1out  = trapz(t_cycle,F_cycleOut.*X_cycle(:,1));
         mol1out  = trapz(t_cycle,F_cycleOut.*1);
         MBerror = mol1in - mol1out;
         MBerrorVals(cycle) = MBerror;
@@ -789,10 +786,10 @@ try
 
     if parameters.processType == "Resin" || parameters.amine
         phi_pen = [0, 0];
-        phi_pen(1) = 0.80.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(0-recovery_percentage))).^2;
+        phi_pen(1) = 0.30.*((1.*max(0,(95-purity_percentage)))).^2 + (max(0,(0-recovery_percentage))).^2;
         phi_pen(2) = 0.30.*((1.*max(0,(95-purity_percentage))).^2 + (max(0,(0-recovery_percentage))).^2);
         if parameters.OptType == "Const"
-            KPIs = [(-productivity+phi_pen(1)) 3600.*50*(SEC.*2.77778e-7+phi_pen(2))];
+            KPIs = [(-productivity+phi_pen(1)) 3600.*1*(SEC.*2.77778e-7+phi_pen(2))];
         else
             KPIs = [ -purity_percentage -recovery_percentage];
         end
@@ -899,7 +896,6 @@ if parameters.outputType == "plot"
     end
     q1_starvals(1:length(t1)) = q1_starvalsAds;
     q2_starvals(1:length(t_ads)) = q2_starvalsAds;
-    % plot(t_cycle./t0, q1_starvals,'k--','LineWidth', 3,'DisplayName','q1*');
     if parameters.plot0D;
         plot(t_cycle./t0, X_cycle(:,2)./1, 'b-','LineWidth', 1.5 , 'DisplayName','0-D','LineStyle',linestyleVal); hold on;
     end
@@ -1010,7 +1006,6 @@ if parameters.outputType == "plot"
 
     subplot(1,2,1)
     hold on
-    % plot(t1,dq1dt.*q1_starvalsAds1./cvals,'-b','LineWidth',2)
     plot(t_cycle./t0,dq1dt.*1./1.*1./1,'b','LineWidth',2,'LineStyle',linestyleVal)
     box on; grid off; set(gca,"LineWidth",2,"FontName","times new roman","FontSize",20)
     ylabel('d{\it{q}}_1/d{\it{t}} [molkg^{-1}s^{-1}]')
