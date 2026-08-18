@@ -93,6 +93,18 @@ pip install numpy>=1.26 scipy>=1.13 pymoo>=0.6.0 matplotlib>=3.8 matplotlib-inli
 ## Change Log
 All notable changes to this project will be documented in this file.
 
+###  Python port parity update — 2026-08-18
+#### Added
+- `pythonPort/kBAAM_ODEs_nonIsothermal_ND_dP_blo2node.py`: Python port of the 10-state two-node blowdown ODE.
+
+#### Changed
+- `pythonPort/kBAAM_ODEs_nonIsothermal_ND.py`: aligned with `kBAAM_ODEs_nonIsothermal_ND_dP.m` — corrected ads/blo/evac/pres step kinetics, added purge step, added SSLSTA equilibrium and heat paths, fixed wall energy balance ambient temperature.
+- `pythonPort/kBAAM_Outputs_nonIsothermal.py`: aligned with `kBAAM_Outputs_nonIsothermal_dP.m` — two-node blowdown path, Darcy-based flowrates for pressure-drop cases, corrected mole inventory references, `dt` updated to 0.05 s, solver tolerances updated to `1e-5`.
+- `pythonPort/run_NSGA.py`: updated bounds, `xRef`, ngens/pop_size defaults, and added Resin adsorbent loops to match `run_NSGA.m`; added `AdsorbentPVSADSL` case.
+- `pythonPort/requirements.txt`: pinned minimum versions for all dependencies.
+
+
+
 ###  Add a version of the model where both BD and EVAC are modeled as two tanks in series - 2026-05-11
 #### Added
 - kBAAM_Outputs_nonIsothermal_dP_2nodeEvac.m`: new outputs file that runs reverse evacuation as two tanks in series.

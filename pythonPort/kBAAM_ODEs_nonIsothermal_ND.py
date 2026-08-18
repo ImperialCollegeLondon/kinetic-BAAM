@@ -120,11 +120,21 @@ def _dsl_heats(parameters, y1, t_nd, p_nd):
 
 
 def _equilibrium_loadings(parameters, p_nd, y1, t_nd):
+    pref = _get(parameters, 'PRef')
+    tref = _get(parameters, 'TRef')
+    if _get(parameters, 'SSLSTA', False):
+        sslsta_fn = _get(parameters, 'SSLSTAFunction') or _get(parameters, 'SSLSTA_fn')
+        if sslsta_fn is None:
+            try:
+                from SSLSTA import SSLSTA as sslsta_fn
+            except Exception:
+                sslsta_fn = None
+        if sslsta_fn is None:
+            raise KeyError("SSLSTA implementation required when parameters['SSLSTA'] is True.")
+        return sslsta_fn(p_nd * pref, y1, t_nd * tref, parameters)
     dsl = _get(parameters, 'DSL') or _DSL_impl
     if dsl is None:
         raise KeyError('DSL implementation is required in parameters or imports.')
-    pref = _get(parameters, 'PRef')
-    tref = _get(parameters, 'TRef')
     return dsl(
         p_nd * pref,
         y1,
@@ -181,6 +191,7 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
     t_dim = t_nd * t_ref
 
     qheat = 0.0
+    T_a = t_ref  # ambient temperature for wall energy balance [K, dimensional]
 
     ldf = _get(parameters, 'LDFCoefficient') or _LDF_impl
     if ldf is None:
@@ -200,9 +211,9 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
             k1_in, _ = ldf(p_dim, y1, t_dim, q1_in, q2_in, parameters)
             _, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
             dq1dt = t_ref_qref * k1_in * (q1_in - q1 * qref)
-            dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+            dq2dt = t_ref_qref * k2 * (max(q2_star, q2_in) - q2 * qref)
 
-        f_in = _get(parameters, 'volFlowin') * (2.0 * p_nd - p_out) * p_ref / (r * np.mean([t_ref, t_dim]))
+        f_in = _get(parameters, 'volFlowin') * (2.0 * p_nd - p_out) * p_ref / (r * t_ref)
         y1_in = _get(parameters, 'y1_in')
         v_out = (2.0 / col_l) * darcy_k * (p_nd - p_out) * p_ref
         f_out = p_out * p_ref * area * ebed / (r * t_nd * t_ref) * v_out
@@ -210,14 +221,7 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
     elif step_name == 'blo':
         p_out = _get(parameters, 'P_blo')(t * tref) / p_ref
         q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
-        k1, k2 = ldf(
-            p_dim,
-            _get(parameters, 'y1init', y1),
-            t_dim,
-            _get(parameters, 'q1init', q1_star),
-            _get(parameters, 'q2init', q2_star),
-            parameters,
-        )
+        k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
         dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
         dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
         f_in = 0.0
@@ -231,13 +235,19 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
         k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
         dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
         dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
-        if _get(parameters, 'heating', False) and t_dim < _get(parameters, 'Theat', 0.0):
-            qheat = (
-                _get(parameters, 'heatPowerDensity', 0.0)
-                * (_get(parameters, 'Theat', 0.0) - t_dim)
-                / max(_get(parameters, 'Theat', 1.0) - t_ref, 1e-12)
-                / max(_get(parameters, 'r_out') - _get(parameters, 'r_in'), 1e-12)
-            )
+        if _get(parameters, 'heating', False):
+            if _get(parameters, 'elecHeating', True):
+                if t_dim < _get(parameters, 'Theat', 0.0):
+                    r_out = _get(parameters, 'r_out', 0.0)
+                    r_in  = _get(parameters, 'r_in',  0.0)
+                    qheat = (
+                        _get(parameters, 'heatPowerDensity', 0.0)
+                        * (_get(parameters, 'Theat', 0.0) - t_dim)
+                        / max(_get(parameters, 'Theat', 1.0) - t_ref, 1e-12)
+                        * 2.0 * r_out / max(r_out ** 2 - r_in ** 2, 1e-12)
+                    )
+            else:
+                T_a = _get(parameters, 'Theat', t_ref)  # steam/fluid heating: set ambient to Theat
         f_in = 0.0
         y1_in = 0.0
         v_out = (2.0 / col_l) * darcy_k * (p_nd - p_out) * p_ref
@@ -245,10 +255,12 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
 
     elif step_name == 'pres':
         p_out = _get(parameters, 'P_press')(t * tref) / p_ref
-        q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
-        k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
+        q1_star_in, q2_star_in = _equilibrium_loadings(parameters, p_nd, _get(parameters, 'y1_in'), t_nd)
+        q1_star, q2_star       = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+        k1, _  = ldf(p_dim, y1, t_dim, max(q1_star, q1_star_in), max(q2_star, q2_star_in), parameters)
+        _, k2  = ldf(p_dim, y1, t_dim, max(q1_star, q1_star_in), max(q2_star, q2_star_in), parameters)
         dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
-        dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+        dq2dt = t_ref_qref * k2 * (max(q2_star, q2_star_in) - q2 * qref)
         v_in = (2.0 / col_l) * darcy_k * (p_out - p_nd) * p_ref
         f_in = p_out * p_ref * area * ebed / (r * t_ref) * v_in
         f_out = 0.0
@@ -256,6 +268,29 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
             y1_in = _get(parameters, 'y1_LPP', _get(parameters, 'y1_in'))
         else:
             y1_in = _get(parameters, 'y1_in')
+
+    elif step_name == 'purge':
+        p_out = _get(parameters, 'p_L', p_nd * p_ref) / p_ref
+        y1_purge_fn = _get(parameters, 'y1LPft')
+        if callable(y1_purge_fn):
+            _set(parameters, 'y1_in', max(1e-11, float(y1_purge_fn(t))))
+        if _get(parameters, 'cCSTR', False):
+            q1_star, q2_star = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+            k1, k2 = ldf(p_dim, y1, t_dim, q1_star, q2_star, parameters)
+            dq1dt = t_ref_qref * k1 * (q1_star - q1 * qref)
+            dq2dt = t_ref_qref * k2 * (q2_star - q2 * qref)
+        else:
+            q1_star_in, q2_star_in = _equilibrium_loadings(parameters, p_nd, _get(parameters, 'y1_in'), t_nd)
+            q1_star, q2_star       = _equilibrium_loadings(parameters, p_nd, y1, t_nd)
+            k1, _  = ldf(p_dim, y1, t_dim, max(q1_star, q1_star_in), max(q2_star, q2_star_in), parameters)
+            _, k2  = ldf(p_dim, y1, t_dim, max(q1_star, q1_star_in), max(q2_star, q2_star_in), parameters)
+            dq1dt = t_ref_qref * k1 * (max(q1_star, q1_star_in) - q1 * qref)
+            dq2dt = t_ref_qref * k2 * (max(q2_star, q2_star_in) - q2 * qref)
+        f_in = _get(parameters, 'volFlowPurge', 0.0) * (2.0 * p_nd - p_out) * p_ref / (r * t_ref)
+        y1_in = _get(parameters, 'y1_in')
+        v_out = (2.0 / col_l) * darcy_k * (p_nd - p_out) * p_ref
+        f_out = p_dim * area * ebed / (r * t_dim) * v_out
+
     else:
         raise ValueError(f'Unknown step_name: {step_name}')
 
@@ -269,7 +304,7 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
         f[3] = cpg_e_v * (f_in * t_ref - f_out * t_dim) - two_hin * (t_dim - tw_nd * tw_ref)
         f[4] = _get(parameters, 'wall_prefactor') * (
             _get(parameters, 'wall_coeff1') * (t_dim - tw_nd * tw_ref)
-            - _get(parameters, 'wall_coeff2') * (tw_nd * tw_ref - t_ref)
+            - _get(parameters, 'wall_coeff2') * (tw_nd * tw_ref - T_a)
             + qheat
         )
 
@@ -288,7 +323,20 @@ def kbaam_odes_nonisothermal_nd(t, x, parameters, step_name: str):
 
     if not is_isothermal:
         ceff = ab * (_get(parameters, 'rho_s') * _get(parameters, 'cp_s') + cp_a * _get(parameters, 'rho_s') * qref * (q1 + q2))
-        del_h1, del_h2 = _dsl_heats(parameters, y1, t_nd, p_nd)
+        if _get(parameters, 'SSLSTA', False):
+            try:
+                from computeSSLSTAHeatBinaryBT import computeSSLSTAHeatBinaryBT
+                del_h1, del_h2 = computeSSLSTAHeatBinaryBT(
+                    p_dim / 1e5, y1, t_dim,
+                    [parameters['SSLSTA1'], parameters['SSLSTA2']],
+                )
+            except Exception:
+                del_h1, del_h2 = _dsl_heats(parameters, y1, t_nd, p_nd)
+        else:
+            # For ads step (non-cCSTR), delH1 uses feed-side y1 per MATLAB buildMassMatrix
+            y1_for_h1 = (_get(parameters, 'y1_in') if (step_name == 'ads' and not _get(parameters, 'cCSTR', False)) else y1)
+            del_h1, _ = _dsl_heats(parameters, y1_for_h1, t_nd, p_nd)
+            _, del_h2  = _dsl_heats(parameters, y1, t_nd, p_nd)
         is_resin = _get(parameters, 'isResin', _get(parameters, 'processType') in ('Resin', 'ResinSens'))
         if is_resin:
             del_h1 = -_get(parameters, 'delUb_1')

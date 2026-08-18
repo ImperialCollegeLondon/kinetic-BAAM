@@ -151,7 +151,7 @@ F_disp = 0;
 dq1dt_1 = tRef_qRef * k1_1 * (q1_star1 - q1_1 * qRef);
 dq2dt_1 = tRef_qRef * k2_1 * (q2_star1 - q2_1 * qRef);
 
-% ---- LDF kinetics: node 2 (at P2) ----
+% % ---- LDF kinetics: node 2 (at P2) ----
 [q1_star2, q2_star2] = getEq(P2, y1_2, T, PRef, TRef, parameters);
 [k1_2, k2_2] = LDFCoefficient(P2_dim, y1_2, T_dim, q1_star2, q2_star2, parameters);
 dq1dt_2 = tRef_qRef * k1_2 * (q1_star2 - q1_2 * qRef);

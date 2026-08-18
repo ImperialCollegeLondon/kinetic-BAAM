@@ -62,9 +62,13 @@ import warnings
 from scipy.integrate import solve_ivp
 
 from kBAAM_ODEs_nonIsothermal_ND import kbaam_odes_nonisothermal_nd
+from kBAAM_ODEs_nonIsothermal_ND_dP_blo2node import kbaam_odes_nonisothermal_nd_dp_blo2node
 from createParameters import create_parameters
 import pdb
-import matplotlib_inline;
+try:
+    import matplotlib_inline as _mpl_inline
+except ImportError:
+    _mpl_inline = None
 import os
 from datetime import datetime
 def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Sequence[float]] = None, raise_on_error: bool = False, solver_method: str = 'BDF'):
@@ -77,8 +81,12 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
     Returns:
         KPIs: 2-element list/array with the KPIs (matching MATLAB output)
     """
-    matplotlib_inline.backend_inline.set_matplotlib_formats('png', 'jpeg');
-        
+    if _mpl_inline is not None:
+        try:
+            _mpl_inline.backend_inline.set_matplotlib_formats('png', 'jpeg')
+        except Exception:
+            pass
+    
     startTime = datetime.now()
     
 
@@ -228,7 +236,7 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
 
         Rg = 8.3145
 
-        dt = 0.04 if parameters.get('processType') in ('Resin', 'ResinSens') else 0.1
+        dt = 0.04 if parameters.get('processType') in ('Resin', 'ResinSens') else 0.05
         t_ads = np.arange(0.0, parameters['t_ads'] + dt, dt)
         t_blo = np.arange(0.0, parameters['t_blo'] + dt, dt)
         t_evac = np.arange(0.0, parameters['t_evac'] + dt, dt)
@@ -370,7 +378,7 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
 
             # solve pressurization
             t_eval_pres = t_press / timeRef
-            sol4 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'pres'), (t_eval_pres[0], t_eval_pres[-1]), X0, method=solver_method, t_eval=t_eval_pres, rtol=1e-6, atol=1e-6)
+            sol4 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'pres'), (t_eval_pres[0], t_eval_pres[-1]), X0, method=solver_method, t_eval=t_eval_pres, rtol=1e-5, atol=1e-5)
             t4 = sol4.t * timeRef
             X4 = sol4.y.T
             X4[X4 < 0] = 0
@@ -393,9 +401,15 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
             parameters['y1init'] = X0[0]
             parameters['q2init'] = X0[2] * parameters['qRef']
 
+            # loading fraction after pressurization (used to size 2-node blowdown)
+            _lf_q1max_p, _ = DSL(X4[-1, 5], parameters['y1_in'], X4[-1, 3], parameters['qsb_1'], parameters['qsd_1'], parameters['qsb_2'], parameters['qsd_2'], parameters['bo_1'], parameters['do_1'], parameters['bo_2'], parameters['do_2'], parameters['delUb_1'], parameters['delUd_1'], parameters['delUb_2'], parameters['delUd_2'])
+            _lf_q10_p, _   = DSL(X4[-1, 5], X4[-1, 0], X4[-1, 3], parameters['qsb_1'], parameters['qsd_1'], parameters['qsb_2'], parameters['qsd_2'], parameters['bo_1'], parameters['do_1'], parameters['bo_2'], parameters['do_2'], parameters['delUb_1'], parameters['delUd_1'], parameters['delUb_2'], parameters['delUd_2'])
+            _lf_denom_p = _lf_q1max_p - _lf_q10_p
+            parameters['loadingFraction'] = (X4[-1, 1] - X4[0, 1]) / (_lf_denom_p if abs(_lf_denom_p) > 1e-12 else 1.0)
+
             # solve adsorption
             t_eval_ads = t_ads / timeRef
-            sol1 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'ads'), (t_eval_ads[0], t_eval_ads[-1]), X0, method=solver_method, t_eval=t_eval_ads, rtol=1e-6, atol=1e-6)
+            sol1 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'ads'), (t_eval_ads[0], t_eval_ads[-1]), X0, method=solver_method, t_eval=t_eval_ads, rtol=1e-5, atol=1e-5)
             t1 = sol1.t * timeRef
             X1 = sol1.y.T
             X1[X1 < 0] = 0
@@ -410,11 +424,17 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
             if parameters.get('pressureDrop', False):
                 parameters['P_initH'] = X1[-1, 5]
                 parameters['P_blo'] = _ensure_vector_fn(lambda t: parameters['p_I'] + (parameters['P_initH'] - parameters['p_I']) * np.exp(-parameters['lambda'] * np.asarray(t)))
-            # compute outlet flows for adsorption
-            grad_q1 = np.gradient(X1[:, 1], dt)
-            grad_q2 = np.gradient(X1[:, 2], dt)
-            Fout_ads = parameters['F_in'] - (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_q1 + grad_q2)
-            Fout_ads[Fout_ads < 0] = 0
+            # compute inlet/outlet flows for adsorption step
+            fin_ads = parameters['volFlowin'] * (2.0 * X1[:, 5] - parameters['p_H']) / (Rg * parameters['T_feed'])
+            if parameters.get('pressureDrop', False):
+                v_outA = (2.0 / parameters['L']) * parameters['darcyK'] * (X1[:, 5] - parameters['p_H'])
+                Fout_ads = parameters['p_H'] * parameters['A_in'] * parameters['e_bed'] / (Rg * X1[:, 3]) * v_outA
+                Fout_ads[Fout_ads < 0] = 0
+            else:
+                grad_q1_ads = np.gradient(X1[:, 1], dt)
+                grad_q2_ads = np.gradient(X1[:, 2], dt)
+                Fout_ads = parameters['F_in'] - (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_q1_ads + grad_q2_ads)
+                Fout_ads[Fout_ads < 0] = 0
             F_1_out_ads = Fout_ads * X1[:, 0]
 
             # integrate molar outputs
@@ -425,19 +445,77 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
             parameters['q1init'] = X1[-1, 1]
             parameters['q2init'] = X1[-1, 2]
 
+            # loading fraction after adsorption (for 2-node blowdown sizing)
+            _lf_q1max_a, _ = DSL(X1[-1, 5], parameters['y1_in'], X1[-1, 3], parameters['qsb_1'], parameters['qsd_1'], parameters['qsb_2'], parameters['qsd_2'], parameters['bo_1'], parameters['do_1'], parameters['bo_2'], parameters['do_2'], parameters['delUb_1'], parameters['delUd_1'], parameters['delUb_2'], parameters['delUd_2'])
+            _lf_q10_a, _   = DSL(X4[-1, 5], X4[-1, 0], X4[-1, 3], parameters['qsb_1'], parameters['qsd_1'], parameters['qsb_2'], parameters['qsd_2'], parameters['bo_1'], parameters['do_1'], parameters['bo_2'], parameters['do_2'], parameters['delUb_1'], parameters['delUd_1'], parameters['delUb_2'], parameters['delUd_2'])
+            _lf_denom_a = _lf_q1max_a - X1[0, 1]
+            parameters['loadingFraction'] = (X1[-1, 1] - X1[0, 1]) / (_lf_denom_a if abs(_lf_denom_a) > 1e-12 else 1.0)
+            f_w = max(0.05, min(0.95, parameters['loadingFraction']))
+
             # blowdown
             t_eval_blo = t_blo / timeRef
-            sol2 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'blo'), (t_eval_blo[0], t_eval_blo[-1]), X0, method=solver_method, t_eval=t_eval_blo, rtol=1e-6, atol=1e-6)
-            t2 = sol2.t * timeRef
-            X2 = sol2.y.T
-            X2[X2 < 0] = 0
-            X2[X2[:, 0] > 1, 0] = 1
-            X0 = X2[-1, :].copy()
-            X2 = X2 * parameters['refVals']
+            if parameters.get('pressureDrop', False) and f_w < 0.95 and not parameters.get('amine', False):
+                # 2-node blowdown
+                refVals_blo = np.array([
+                    1.0, parameters['qRef'], parameters['qRef'],   # node 1: y1_1, q1_1, q2_1
+                    1.0, parameters['qRef'], parameters['qRef'],   # node 2: y1_2, q1_2, q2_2
+                    parameters['TRef'], parameters['TwRef'],       # shared T, Tw
+                    parameters['PRef'], parameters['PRef'],        # P1, P2
+                ])
+                P_ads_end = parameters['p_H']
+                T_ads_end = X1[-1, 3]
+                q1_n1, q2_n1 = DSL(P_ads_end, parameters['y1_in'], T_ads_end, parameters['qsb_1'], parameters['qsd_1'], parameters['qsb_2'], parameters['qsd_2'], parameters['bo_1'], parameters['do_1'], parameters['bo_2'], parameters['do_2'], parameters['delUb_1'], parameters['delUd_1'], parameters['delUb_2'], parameters['delUd_2'])
+                y1_n2 = X1[-1, 0]
+                q1_n2 = X1[ 0, 1]
+                q2_n2 = X1[ 0, 2]
+                X0_blo = np.array([
+                    parameters['y1_in'], q1_n1, q2_n1,
+                    y1_n2, q1_n2, q2_n2,
+                    T_ads_end, X1[-1, 4],
+                    P_ads_end, P_ads_end,
+                ]) / refVals_blo
+                sol2_10 = solve_ivp(
+                    lambda tt, xx: kbaam_odes_nonisothermal_nd_dp_blo2node(tt, xx, parameters, 'blo'),
+                    (t_eval_blo[0], t_eval_blo[-1]), X0_blo,
+                    method=solver_method, t_eval=t_eval_blo, rtol=1e-5, atol=1e-5,
+                )
+                t2 = sol2_10.t * timeRef
+                X2_10 = sol2_10.y.T
+                X2_10[X2_10 < 0] = 0
+                X2_10[X2_10[:, 0] > 1, 0] = 1
+                X2_10[X2_10[:, 3] > 1, 3] = 1
+                X2_10dim = X2_10 * refVals_blo
+                f_blo = max(0.05, min(0.9, parameters['loadingFraction']))
+                y1_blo_end = f_blo * X2_10dim[-1, 0] + (1 - f_blo) * X2_10dim[-1, 3]
+                q1_blo_end = f_blo * X2_10dim[-1, 1] + (1 - f_blo) * X2_10dim[-1, 4]
+                q2_blo_end = f_blo * X2_10dim[-1, 2] + (1 - f_blo) * X2_10dim[-1, 5]
+                T_blo_end  = X2_10dim[-1, 6]
+                Tw_blo_end = X2_10dim[-1, 7]
+                P_blo_end  = f_blo * X2_10dim[-1, 8] + (1 - f_blo) * X2_10dim[-1, 9]
+                X0 = np.array([y1_blo_end, q1_blo_end, q2_blo_end, T_blo_end, Tw_blo_end, P_blo_end]) / parameters['refVals']
+                P_avg_blo = f_blo * X2_10dim[:, 8] + (1 - f_blo) * X2_10dim[:, 9]
+                X2 = np.column_stack([
+                    f_blo * X2_10dim[:, 0] + (1 - f_blo) * X2_10dim[:, 3],
+                    f_blo * X2_10dim[:, 1] + (1 - f_blo) * X2_10dim[:, 4],
+                    f_blo * X2_10dim[:, 2] + (1 - f_blo) * X2_10dim[:, 5],
+                    X2_10dim[:, 6], X2_10dim[:, 7], P_avg_blo,
+                ])
+                y1_bd_out = X2_10dim[:, 3]  # node-2 (product end) composition
+            else:
+                sol2 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'blo'), (t_eval_blo[0], t_eval_blo[-1]), X0, method=solver_method, t_eval=t_eval_blo, rtol=1e-5, atol=1e-5)
+                t2 = sol2.t * timeRef
+                X2 = sol2.y.T
+                X2[X2 < 0] = 0
+                X2[X2[:, 0] > 1, 0] = 1
+                X0 = X2[-1, :].copy()
+                X2 = X2 * parameters['refVals']
+                f_blo = 1.0
+                y1_bd_out = X2[:, 0]
+                X2_10dim = None
 
             # evacuation
             t_eval_evac = t_evac / timeRef
-            sol3 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'evac'), (t_eval_evac[0], t_eval_evac[-1]), X0, method=solver_method, t_eval=t_eval_evac, rtol=1e-6, atol=1e-6)
+            sol3 = solve_ivp(lambda tt, xx: kbaam_odes_nonisothermal_nd(tt, xx, parameters, 'evac'), (t_eval_evac[0], t_eval_evac[-1]), X0, method=solver_method, t_eval=t_eval_evac, rtol=1e-5, atol=1e-5)
             t3 = sol3.t * timeRef
             X3 = sol3.y.T
             X3[X3 < 0] = 0
@@ -453,9 +531,9 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
 
             # compute molar balances
             n_1_ads = (X1[-1, 0] * X1[-1, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X1[-1, 3])) + X1[-1, 1] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
-            n_1_bd = (X2[-1, 0] * X2[-1, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X2[-1, 3])) + X2[-1, 1] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
+            n_1_bd = (X3[ 0, 0] * X3[ 0, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X3[ 0, 3])) + X3[ 0, 1] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
             n_1_evac = (X3[-1, 0] * X3[-1, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X3[-1, 3])) + X3[-1, 1] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
-            n_2_bd = ((1 - X2[-1, 0]) * X2[-1, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X2[-1, 3])) + X2[-1, 2] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
+            n_2_bd = ((1 - X3[ 0, 0]) * X3[ 0, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X3[ 0, 3])) + X3[ 0, 2] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
             n_2_evac = ((1 - X3[-1, 0]) * X3[-1, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X3[-1, 3])) + X3[-1, 2] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
             n_1_pres = (X4[-1, 0] * X4[-1, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X4[-1, 3])) + X4[-1, 1] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
             n_1_presInit = (X4[0, 0] * X4[0, 5] * parameters['V_column'] * parameters['e_bed'] / (Rg * X4[0, 3])) + X4[0, 1] * parameters['V_column'] * (1 - parameters['e_bed']) * parameters['rho_s']
@@ -473,29 +551,49 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
             cycle_time = (parameters['t_ads'] + parameters['t_blo'] + parameters['t_evac'] + parameters['t_press'])
             productivity = (n_1_bd - n_1_evac) / (parameters['V_column'] * cycle_time if parameters['V_column'] * cycle_time != 0 else 1.0)
 
-            # Energy calculation
-            grad_X2_q1 = np.gradient(X2[:, 1], dt)
-            grad_X2_q2 = np.gradient(X2[:, 2], dt)
-            grad_X2_p = np.gradient(X2[:, 5], dt)
-            grad_X2_t = np.gradient(X2[:, 3], dt)
-            grad_X3_q1 = np.gradient(X3[:, 1], dt)
-            grad_X3_q2 = np.gradient(X3[:, 2], dt)
-            grad_X3_p = np.gradient(X3[:, 5], dt)
-            grad_X3_t = np.gradient(X3[:, 3], dt)
-            grad_X4_q1 = np.gradient(X4[:, 1], dt)
-            grad_X4_q2 = np.gradient(X4[:, 2], dt)
-            grad_X4_p = np.gradient(X4[:, 5], dt)
-            grad_X4_t = np.gradient(X4[:, 3], dt)
-
+            # Energy calculation — step flowrates
             fin_ads = parameters['volFlowin'] * (2.0 * X1[:, 5] - parameters['p_H']) / (Rg * parameters['T_feed'])
 
-            Fout_bd = 0 - (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_X2_q1 + grad_X2_q2) - (parameters['e_bed'] / (Rg * X2[:, 3])) * grad_X2_p * parameters['V_column'] + (parameters['e_bed'] * X2[:, 5] / (Rg * X2[:, 3] ** 2)) * grad_X2_t * parameters['V_column']
-            Fout_bd[Fout_bd < 0] = 0
-
-            Fout_evac = 0 - (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_X3_q1 + grad_X3_q2) - 0.0 * (parameters['e_bed'] / (Rg * X3[:, 3])) * grad_X3_p * parameters['V_column'] + (parameters['e_bed'] * X3[:, 5] / (Rg * X3[:, 3] ** 2)) * grad_X3_t * parameters['V_column']
-            Fout_evac[Fout_evac < 0] = 0
-
-            Fin_pres = (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_X4_q1 + grad_X4_q2) + (parameters['e_bed'] / (Rg * X4[:, 3])) * grad_X4_p * parameters['V_column'] - (parameters['e_bed'] * X4[:, 5] / (Rg * X4[:, 3] ** 2)) * grad_X4_t * parameters['V_column']
+            if parameters.get('pressureDrop', False) and f_w < 0.95 and not parameters.get('amine', False):
+                # 2-node blowdown: outlet flow from node-2 (product end)
+                L2_blo_e = (1 - f_blo) * parameters['L']
+                v_outB = (2.0 / L2_blo_e) * parameters['darcyK'] * (X2_10dim[:, 9] - parameters['P_blo'](t2))
+                Fout_bd = X2_10dim[:, 9] * parameters['A_in'] * parameters['e_bed'] / (Rg * X2_10dim[:, 6]) * v_outB
+                Fout_bd[Fout_bd < 0] = 0
+                v_outE = (2.0 / parameters['L']) * parameters['darcyK'] * (X3[:, 5] - parameters['P_evac'](t3))
+                Fout_evac = X3[:, 5] * parameters['A_in'] * parameters['e_bed'] / (Rg * X3[:, 3]) * v_outE
+                Fout_evac[Fout_evac < 0] = 0
+                v_outP = -(2.0 / parameters['L']) * parameters['darcyK'] * (X4[:, 5] - parameters['P_press'](t4))
+                Fin_pres = parameters['P_press'](t4) * parameters['A_in'] * parameters['e_bed'] / (Rg * parameters['T_feed']) * v_outP
+            elif parameters.get('pressureDrop', False) and not parameters.get('amine', False):
+                # single-node with pressure drop
+                v_outB = (2.0 / parameters['L']) * parameters['darcyK'] * (X2[:, 5] - parameters['P_blo'](t2))
+                Fout_bd = X2[:, 5] * parameters['A_in'] * parameters['e_bed'] / (Rg * X2[:, 3]) * v_outB
+                Fout_bd[Fout_bd < 0] = 0
+                v_outE = (2.0 / parameters['L']) * parameters['darcyK'] * (X3[:, 5] - parameters['P_evac'](t3))
+                Fout_evac = X3[:, 5] * parameters['A_in'] * parameters['e_bed'] / (Rg * X3[:, 3]) * v_outE
+                Fout_evac[Fout_evac < 0] = 0
+                v_outP = -(2.0 / parameters['L']) * parameters['darcyK'] * (X4[:, 5] - parameters['P_press'](t4))
+                Fin_pres = parameters['P_press'](t4) * parameters['A_in'] * parameters['e_bed'] / (Rg * parameters['T_feed']) * v_outP
+            else:
+                # no pressure drop: gradient-based material balance
+                grad_X2_q1 = np.gradient(X2[:, 1], dt)
+                grad_X2_q2 = np.gradient(X2[:, 2], dt)
+                grad_X2_p  = np.gradient(X2[:, 5], dt)
+                grad_X2_t  = np.gradient(X2[:, 3], dt)
+                grad_X3_q1 = np.gradient(X3[:, 1], dt)
+                grad_X3_q2 = np.gradient(X3[:, 2], dt)
+                grad_X3_p  = np.gradient(X3[:, 5], dt)
+                grad_X3_t  = np.gradient(X3[:, 3], dt)
+                grad_X4_q1 = np.gradient(X4[:, 1], dt)
+                grad_X4_q2 = np.gradient(X4[:, 2], dt)
+                grad_X4_p  = np.gradient(X4[:, 5], dt)
+                grad_X4_t  = np.gradient(X4[:, 3], dt)
+                Fout_bd = 0 - (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_X2_q1 + grad_X2_q2) - (parameters['e_bed'] / (Rg * X2[:, 3])) * grad_X2_p * parameters['V_column'] + (parameters['e_bed'] * X2[:, 5] / (Rg * X2[:, 3] ** 2)) * grad_X2_t * parameters['V_column']
+                Fout_bd[Fout_bd < 0] = 0
+                Fout_evac = 0 - (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_X3_q1 + grad_X3_q2) - 0.0 * (parameters['e_bed'] / (Rg * X3[:, 3])) * grad_X3_p * parameters['V_column'] + (parameters['e_bed'] * X3[:, 5] / (Rg * X3[:, 3] ** 2)) * grad_X3_t * parameters['V_column']
+                Fout_evac[Fout_evac < 0] = 0
+                Fin_pres = (1 - parameters['e_bed']) * parameters['V_column'] * parameters['rho_s'] * (grad_X4_q1 + grad_X4_q2) + (parameters['e_bed'] / (Rg * X4[:, 3])) * grad_X4_p * parameters['V_column'] - (parameters['e_bed'] * X4[:, 5] / (Rg * X4[:, 3] ** 2)) * grad_X4_t * parameters['V_column']
 
             p_out_bd = parameters['P_blo'](t2)
             p_out_evac = parameters['P_evac'](t3)
