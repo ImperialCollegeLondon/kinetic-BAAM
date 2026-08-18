@@ -71,7 +71,7 @@ except ImportError:
     _mpl_inline = None
 import os
 from datetime import datetime
-def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Sequence[float]] = None, raise_on_error: bool = False, solver_method: str = 'BDF'):
+def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Sequence[float]] = None, raise_on_error: bool = False, solver_method: str = 'BDF', _profile_store: Optional[Dict] = None):
     """Run cyclic steady-state simulation and return KPIs.
 
     Parameters follows the dict returned by create_parameters(). If theta is
@@ -638,6 +638,12 @@ def kbaam_outputs_nonisothermal(parameters: Dict[str, Any], thetaIn: Optional[Se
                             temp_check[k] = 0
 
             cycle += 1
+
+            if _profile_store is not None:
+                t_cycle = np.concatenate([t1, t2 + t1[-1], t3 + t1[-1] + t2[-1], t4 + t1[-1] + t2[-1] + t3[-1]])
+                _profile_store['t_cycle'] = t_cycle
+                _profile_store['X_cycle'] = np.vstack([X1, X2, X3, X4])
+                _profile_store['t_steps'] = (t1[-1], t1[-1] + t2[-1], t1[-1] + t2[-1] + t3[-1])
 
         # Compute KPIs and penalties
         purity_percentage = purity_percentageValues[-1] if len(purity_percentageValues) else 0.0
