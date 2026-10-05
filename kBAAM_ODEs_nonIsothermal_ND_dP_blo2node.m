@@ -48,26 +48,26 @@
 %   - dXdt: 10x1 vector of time derivatives
 %
 % Dependencies:
-%   - DSL.m / SSLSTA.m
+%   - DSL.m 
 %   - LDFCoefficient.m
-%   - computeDSLHeatUnary.m / computeSSLSTAHeatBinaryBT.m
+%   - computeDSLHeatUnary.m 
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function dXdt = kBAAM_ODEs_nonIsothermal_ND_dP_blo2node(t, X, parameters,stepName)
 
 R = 8.3145;
 
-    % ---- Unpack states ----
-    y1_1 = max(0, min(1, X(1)));
-    q1_1 = X(2);
-    q2_1 = X(3);
-    y1_2 = max(0, min(1, X(4)));
-    q1_2 = X(5);
-    q2_2 = X(6);
-    T    = max(X(7),  1e-9);   % shared dimensionless temperature
-    Tw   = X(8);               % shared dimensionless wall temperature
-    P1   = max(X(9),  1e-9);   % node 1 dimensionless pressure
-    P2   = max(X(10), 1e-9);   % node 2 dimensionless pressure
+% ---- Unpack states ----
+y1_1 = max(0, min(1, X(1)));
+q1_1 = X(2);
+q2_1 = X(3);
+y1_2 = max(0, min(1, X(4)));
+q1_2 = X(5);
+q2_2 = X(6);
+T    = max(X(7),  1e-9);   % shared dimensionless temperature
+Tw   = X(8);               % shared dimensionless wall temperature
+P1   = max(X(9),  1e-9);   % node 1 dimensionless pressure
+P2   = max(X(10), 1e-9);   % node 2 dimensionless pressure
 
 if string(stepName) == "blo"
     % Per-node volumes based on adsorption loading fraction.
@@ -88,7 +88,7 @@ else
 
     % Per-node volumes based on adsorption loading fraction.
     % Clamp to [0.1, 0.95] to prevent degenerate small nodes that cause excessive stiffness.
-    f_node = 1-max(0.03, min(0.97, parameters.loadingFraction));
+    f_node = 1-max(0.05, min(0.95, parameters.loadingFraction));
 end
 % ---- Unpack parameters ----
 tRef      = parameters.timeRef;
@@ -116,11 +116,11 @@ P2_dim = P2 * PRef;
 T_dim  = T  * TRef;
 
 if string(stepName) == "blo"
-% ---- Prescribed outlet pressure (product end of node 2) ----
-P_out = parameters.P_blo(t * tRef) / PRef;
+    % ---- Prescribed outlet pressure (product end of node 2) ----
+    P_out = parameters.P_blo(t * tRef) / PRef;
 else
-% ---- Prescribed outlet pressure (product end of node 2) ----
-P_out = parameters.P_evac(t * tRef) / PRef;
+    % ---- Prescribed outlet pressure (product end of node 2) ----
+    P_out = parameters.P_evac(t * tRef) / PRef;
 end
 
 % ---- Darcy flows: independent per leg, each scaled by its own node length ----
@@ -180,15 +180,15 @@ two_hin = parameters.two_hin_rin_e;
 Qheat = 0;
 if ~parameters.isIsothermal
     f(7) = cpg_eV_total * (0 - F_out * T_dim) ...
-         - two_hin * (T_dim - Tw * TwRef);
+        - two_hin * (T_dim - Tw * TwRef);
 end
 
 % Shared wall energy balance
 if ~parameters.isIsothermal
     f(8) = parameters.wall_prefactor * ...
         ( parameters.wall_coeff1 * (T_dim - Tw * TwRef) ...
-         -parameters.wall_coeff2 * (Tw * TwRef - TRef) ...
-         + Qheat);
+        -parameters.wall_coeff2 * (Tw * TwRef - TRef) ...
+        + Qheat);
 end
 
 % Per-node overall material balance
@@ -202,14 +202,12 @@ end
 
 % ============================================================
 function [q1s, q2s] = getEq(P, y1, T, PRef, TRef, parameters)
-if parameters.SSLSTA
-    [q1s, q2s] = SSLSTA(P * PRef, y1, T * TRef, parameters);
-else
-    [q1s, q2s] = DSL(P * PRef, y1, T * TRef, ...
-        parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, ...
-        parameters.bo_1,  parameters.do_1,  parameters.bo_2,  parameters.do_2,  ...
-        parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-end
+
+[q1s, q2s] = DSL(P * PRef, y1, T * TRef, ...
+    parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, ...
+    parameters.bo_1,  parameters.do_1,  parameters.bo_2,  parameters.do_2,  ...
+    parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+
 end
 
 % ============================================================
@@ -255,14 +253,8 @@ if ~parameters.isIsothermal
     Ceff = Ab * (parameters.rho_s * parameters.cp_s + cp_a * parameters.rho_s * qRef * (q1_avg + q2_avg));
     y1_avg = f_node * y1_1 + (1 - f_node) * y1_2;
     P_avg  = f_node * P1 + (1 - f_node) * P2;  % avg for delH evaluation
-    if parameters.SSLSTA
-        [delH1_1, delH2_1] = computeSSLSTAHeatBinaryBT(P_avg*PRef/1e5, y1_avg, T_dim, [parameters.SSLSTA1'; parameters.SSLSTA2']);
-        delH1_2 = delH1_1;
-        delH2_2 = delH2_1;
-    else
-        [delH1_1, delH2_1] = computeDSLHeatUnary(P1, y1_1, T, PRef, TRef, parameters);
-        [delH1_2, delH2_2] = computeDSLHeatUnary(P2, y1_2, T, PRef, TRef, parameters);
-    end
+    [delH1_1, delH2_1] = computeDSLHeatUnary(P1, y1_1, T, PRef, TRef, parameters);
+    [delH1_2, delH2_2] = computeDSLHeatUnary(P2, y1_2, T, PRef, TRef, parameters);
     if parameters.isResin
         delH1_1 = -parameters.delUb_1;
         delH2_1 = -parameters.delUb_2;

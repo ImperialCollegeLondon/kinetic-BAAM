@@ -84,10 +84,6 @@ if ~isfield(parameters,'forwardEvac')
 end
 
 
-if ~isfield(parameters,'SSLSTA')
-    parameters.SSLSTA = 0;
-end
-
 if ~isfield(parameters,'plot0D')
     parameters.plot0D = 1;
 end
@@ -197,8 +193,8 @@ if nargin == 2
         parameters.qsd_1 = 0;
         parameters.qsd_2 = 0;
         if parameters.outputType == "opt"
-        theta(8) = 10.^theta(8);
-        theta(9) = 10.^theta(9);
+            theta(8) = 10.^theta(8);
+            theta(9) = 10.^theta(9);
         end
         parameters.bo_1 = theta(8);
         parameters.bo_2 = theta(9);
@@ -223,9 +219,9 @@ if nargin == 2
         parameters.qsd_1 = theta(8);
         parameters.qsd_2 = theta(8);
         if parameters.outputType == "opt"
-        theta(9) = 10.^theta(9);
-        theta(10) = 10.^theta(10);
-        theta(11) = 10.^theta(11);
+            theta(9) = 10.^theta(9);
+            theta(10) = 10.^theta(10);
+            theta(11) = 10.^theta(11);
         end
         parameters.bo_1 = theta(9);
         parameters.bo_2 = theta(11);
@@ -387,18 +383,10 @@ parameters.dPdt_press = @(t)-parameters.lambda*(parameters.P_initR-parameters.P_
 
 %% Initial condition for matrix of solution states
 y1Init = 0.99; % initial mole fraction of component 1 in bed [-]
-if ~parameters.SSLSTA
-    parameters.qRef = parameters.qsb_1+parameters.qsd_1; % reference adsorbed amount [mol/kg]
-    [q1Init, q2Init] = DSL(parameters.p_L, y1Init, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-else
-    if parameters.rigid
-        parameters.SSLSTA1(4:6) = parameters.SSLSTA1(1:3);
-        parameters.SSLSTA2(4:6) = parameters.SSLSTA2(1:3);
-    end
-    parameters.qRef =  parameters.SSLSTA1(4); % reference adsorbed amount [mol/kg]
-    parameters.refVals(2) = parameters.qRef ;
-    [q1Init, q2Init] = SSLSTA(parameters.p_L, y1Init, parameters.T_feed, parameters); % initial adsorbed amounts in bed [mol/kg]
-end
+
+parameters.qRef = parameters.qsb_1+parameters.qsd_1; % reference adsorbed amount [mol/kg]
+[q1Init, q2Init] = DSL(parameters.p_L, y1Init, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
+
 X0 = [y1Init; q1Init; q2Init; parameters.T_feed; parameters.T_feed;parameters.p_L]./parameters.refVals'; % dimensionless vector of initial states
 temp_check = zeros(5, 1);
 
@@ -455,11 +443,8 @@ try
         if parameters.testBT && ~parameters.testEvac
             parameters.P_initH = parameters.p_H+150./4.*1./parameters.rp.^2.*((1-parameters.e_bed)./parameters.e_bed).^2.*1.72e-5.*parameters.v_in.*parameters.L./1;
             y1Init = 0.000001; % initial mole fraction of component 1 in bed [-]
-            if ~parameters.SSLSTA
-                [q1Init, q2Init] = DSL(parameters.P_initH, y1Init, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
-            else
-                [q1Init, q2Init] = SSLSTA(parameters.P_initH, y1Init, parameters.T_feed, parameters); % initial adsorbed amounts in bed [mol/kg]
-            end
+            [q1Init, q2Init] = DSL(parameters.P_initH, y1Init, parameters.T_feed, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2); % initial adsorbed amounts in bed [mol/kg]
+
             X0 = [y1Init; q1Init; q2Init; parameters.T_feed; parameters.T_feed;parameters.P_initH]./parameters.refVals'; % dimensionless vector of initial states
         else
             X0 = X4(end,:)'; %This sets up the initial condition for the next step, by taking the final state from the previous step.
@@ -529,17 +514,15 @@ try
             % Node 1 initial condition: equilibrium with y1_in at end-of-ads (P, T)
             P_ads_end = parameters.p_H;  % [Pa]
             T_ads_end = X1(end,4);  % [K]
-            if ~parameters.SSLSTA
-                [q1_n1, q2_n1] = DSL(P_ads_end, parameters.y1_in, T_ads_end, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-            else
-                [q1_n1, q2_n1] = SSLSTA(P_ads_end, parameters.y1_in, T_ads_end, parameters);
-            end
+            [q1_n1, q2_n1] = DSL(P_ads_end, parameters.y1_in, T_ads_end, parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
 
             % Node 2 initial condition: y1 at end of adsorption; q1, q2 at start of adsorption
             % (product end sees end-of-ads composition but start-of-ads loading)
             y1_n2 = X1(end,1); % [mol frac] — end-of-ads mole fraction
             q1_n2 = X1(1,2);   % [mol/kg]  — start-of-ads loading
             q2_n2 = X1(1,3);   % [mol/kg]  — start-of-ads loading
+            % q2_n2 = (X1(end,3)-f_w.*q2_n1)./(1-f_w);   % [mol/kg]  — start-of-ads loading
+
 
             % Both nodes start at the same pressure (end-of-ads column pressure)
             X0_blo = [parameters.y1_in; q1_n1; q2_n1; ...   % node 1
@@ -608,6 +591,7 @@ try
         n_1_ads = (X1(end,1).*X1(end,6) * parameters.V_column * parameters.e_bed / (Rg * X1(end,4))) + X1(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         f_blo = f_w;  % same clamp as ODE
         n_1_bd = (X3(1,1) .*X3(1,6) * parameters.V_column * parameters.e_bed / (Rg * X3(1,4))) + X3(1,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
+        % n_1_bd = (X2(end,1) .*X2(end,6) * parameters.V_column * parameters.e_bed / (Rg * X2(end,4))) + X2(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_1_evac = (X3(end,1) .*X3(end,6) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,2)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_2_bd = ((1-X3(1,1)).*X3(1,6) * parameters.V_column * parameters.e_bed / (Rg * X3(1,4))) + X3(1,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
         n_2_evac = ((1-X3(end,1)).*X3(end,6) * parameters.V_column * parameters.e_bed / (Rg * X3(end,4))) + X3(end,3)* parameters.V_column * (1-parameters.e_bed).*parameters.rho_s ;
@@ -622,8 +606,6 @@ try
 
         cycle_time = (parameters.t_ads + parameters.t_blo + parameters.t_evac + parameters.t_press);
 
-        productivity = (n_1_bd - n_1_evac) /(parameters.V_column.*cycle_time);
-
         %% Energy Calculation
         % Step flowrates from overall material balance (Fin=0 for blo/evac; Fout=0 for pres)
         if parameters.pressureDrop.*(f_w<0.95)*~parameters.amine
@@ -637,6 +619,7 @@ try
             % Evacuation outlet flowrate [mol/s]: Fin=0; dP/dt compression term suppressed (pump-dominated)
             v_outE = (2./parameters.L) .* parameters.darcyK .* (X3(:,6) - parameters.P_evac(t3));
             Fout_evac  = X3(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X3(:,4)) .* v_outE;
+            % Fout_evac  = parameters.P_evac(t3) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X3(:,4)) .* v_outE;
             Fout_evac(Fout_evac<0) = 0; % enforce non-negative
             % Pressurisation inlet flowrate [mol/s]: Fout=0 (outlet valve closed)
             v_outP = -(2./parameters.L) .* parameters.darcyK .* (X4(:,6) - parameters.P_press(t4));
@@ -648,6 +631,7 @@ try
             % Evacuation outlet flowrate [mol/s]: Fin=0; dP/dt compression term suppressed (pump-dominated)
             v_outE = (2./parameters.L) .* parameters.darcyK .* (X3(:,6) - parameters.P_evac(t3));
             Fout_evac  = X3(:,6) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X3(:,4)) .* v_outE;
+            % Fout_evac  = parameters.P_evac(t3) .* parameters.A_in .* parameters.e_bed ./ (Rg .* X3(:,4)) .* v_outE;
             Fout_evac(Fout_evac<0) = 0; % enforce non-negative
             % Pressurisation inlet flowrate [mol/s]: Fout=0 (outlet valve closed)
             v_outP = -(2./parameters.L) .* parameters.darcyK .* (X4(:,6) - parameters.P_press(t4));
@@ -676,6 +660,7 @@ try
         % parameters.y1_LPP = (mol_1_out_ads + trapz(t2,Fout_bd.*(1-y1_bd_out)))./(moltot_out_ads+trapz(t2,Fout_bd)); % avg CO2 mole fraction in LPP gas [-]
         % end
 
+        comp1Prod = trapz(t3,Fout_evac.*X3(:,1));
         if parameters.pressType == "LPP"
             mole_LP_recycle = n_1_pres-n_1_presInit;
             mole_LP_recycle_2 = n_2_pres-n_2_presInit;
@@ -684,8 +669,11 @@ try
             mole_LP_recycle = 0;
             mole_LP_recycle_2 = 0;
             recovery_percentage = 100 * (n_1_bd - n_1_evac) / ((n_1_ads - n_1_evac + mol_1_out_ads));
+            % recovery_percentage = 100 * (n_1_bd - n_1_evac) / (trapz(t2,Fout_bd.*X2(:,1)) + trapz(t3,Fout_evac.*X3(:,1)) + mol_1_out_ads);
+            % recovery_percentage = 100 * (n_1_bd - n_1_evac) / ((trapz(t1,Fin_ads.*parameters.y1_in) + trapz(t4,Fin_pres.*parameters.y1_in)));
         end
-        purity_percentage = 100 * (n_1_bd - n_1_evac) / (n_1_bd - n_1_evac + max(0,n_2_bd - n_2_evac));
+        purity_percentage = 100 * ((n_1_bd - n_1_evac)) / (n_1_bd - n_1_evac + max(0,n_2_bd - n_2_evac));
+        productivity = ((n_1_bd - n_1_evac)) /(parameters.V_column.*cycle_time);
 
         eta_bd = 0.8.*(19.55.*parameters.P_blo(t2).*1e-5./(1+19.55.*parameters.P_blo(t2).*1e-5));
         eta_evac = 0.8.*(19.55.*parameters.P_evac(t3).*1e-5./(1+19.55.*parameters.P_evac(t3).*1e-5));
@@ -715,7 +703,7 @@ try
         EC_FAN  = trapz(t1, 1./eta_ads  .*Fin_ads  .*Rg.*parameters.T_feed.*(1.4./0.4).*((max(P_atm,(2.*X1(:,6)-parameters.p_H))./P_atm).^(0.4./1.4)-1));  % fan work, ads step [J]
 
         SEC = (EC_PRES + EC_BD + EC_EVAC + EC_HEAT + EC_FAN)./((n_1_bd - n_1_evac).*0.04401)./3600; % specific energy consumption [kWh/tonne CO2]
-        
+
 
         PuLight = (1-parameters.y1_LPP).*100;
         RecLight = 100 * (mol_2_out_ads) / ((n_2_ads - n_2_evac + mol_2_out_ads -max(0,mole_LP_recycle_2)));
@@ -754,10 +742,10 @@ try
             RecLight = 100 * (mol_2_out_ads) / ((n_2_ads - n_2_evac + mol_2_out_ads-max(0,mole_LP_recycle)));
         end
 
-        if cycle > 6
+        if cycle > 11
             for i = 1:4
-                for k = 0:5
-                    if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-5))/process_indicators(i, cycle-5)) <= 0.02
+                for k = 0:10
+                    if abs(100*(process_indicators(i, cycle-k) - process_indicators(i, cycle-10))/process_indicators(i, cycle-10)) <= 0.005
                         temp_check(k+1) = 1;
                     else
                         temp_check(k+1) = 0;
@@ -885,15 +873,10 @@ if parameters.outputType == "plot"
 
     subplot(4,2,3)
     hold on; xlabel('time [s]'); hold on;
-    if ~parameters.SSLSTA
-        [q1_starvals, q2_starvals] = DSL(P_cycle, X_cycle(:,1), X_cycle(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-        [q1_starvalsAds1, q2_starvalsAds] = DSL(X1(:,6), X1(:,1), X1(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-        [q1_starvalsAds, q2_starvalsAds1] = DSL(X1(:,6), ones(length(t_ads),1).*parameters.y1_in, X1(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
-    else
-        [q1_starvals, q2_starvals] = SSLSTA(P_cycle, X_cycle(:,1), X_cycle(:,4), parameters);
-        [q1_starvalsAds1, q2_starvalsAds] = SSLSTA(X1(:,6), X1(:,1), X1(:,4), parameters);
-        [q1_starvalsAds, q2_starvalsAds1] = SSLSTA(X1(:,6), ones(length(t_ads),1).*parameters.y1_in, X1(:,4), parameters);
-    end
+    [q1_starvals, q2_starvals] = DSL(P_cycle, X_cycle(:,1), X_cycle(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+    [q1_starvalsAds1, q2_starvalsAds] = DSL(X1(:,6), X1(:,1), X1(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+    [q1_starvalsAds, q2_starvalsAds1] = DSL(X1(:,6), ones(length(t_ads),1).*parameters.y1_in, X1(:,4), parameters.qsb_1, parameters.qsd_1, parameters.qsb_2, parameters.qsd_2, parameters.bo_1, parameters.do_1, parameters.bo_2, parameters.do_2, parameters.delUb_1, parameters.delUd_1, parameters.delUb_2, parameters.delUd_2);
+
     q1_starvals(1:length(t1)) = q1_starvalsAds;
     q2_starvals(1:length(t_ads)) = q2_starvalsAds;
     if parameters.plot0D;
@@ -1031,9 +1014,9 @@ elseif parameters.OptType ~= "sampling"
     end
     fileID = fopen(['rawData',filesep,parameters.fileName,'.txt'],'a+');
     if parameters.processType == "AdsorbentPVSA"
-       fprintf(fileID,'%12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f \n', ...
+        fprintf(fileID,'%12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f \n', ...
             parameters.p_H, parameters.p_I, parameters.p_L, parameters.F_in, parameters.t_ads, parameters.t_blo, parameters.t_evac,purity_percentage,recovery_percentage,productivity, SEC, theta(7:12));
-  elseif parameters.processType == "AdsorbentPVSADSL"
+    elseif parameters.processType == "AdsorbentPVSADSL"
         fprintf(fileID,'%12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f %12.9f \n', ...
             parameters.p_H, parameters.p_I, parameters.p_L, parameters.F_in, parameters.t_ads, parameters.t_blo, parameters.t_evac,purity_percentage,recovery_percentage,productivity, SEC, theta(7:15));
     elseif parameters.processType == "Resin"
